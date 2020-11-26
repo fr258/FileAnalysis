@@ -16,7 +16,7 @@
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
-#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_BLUE    "\x1b[34;1m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_WHITE   "\x1b[37m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
@@ -28,15 +28,15 @@ typedef struct listNode
 	
 } Node;
 
-void initGeneral(Node* node, void* data, int dataSize);
-void initNameData(Node* node, char** data);
-
 typedef struct 
 {
 	char* name;
 	double freq;
 	
 } NameData;
+
+void initGeneral(Node* node, void* data, int dataSize);
+void initNameData(Node* node, NameData* data);
 
 typedef struct threadListNode
 {
@@ -113,13 +113,13 @@ Node* nodeAdd(Node* head, void* data, int dataSize)
 	return head;
 }
 
-Node* nodeAddAlpha(Node* head, char** data)
+Node* nodeAddAlpha(Node* head, NameData* data)
 {
 	Node* front = head; 
 	if(nData(head)!=NULL)
 	{
 		Node *temp;
-		int compare = strcmp(*data, nData(head)->name);
+		int compare = strcmp(data->name, nData(head)->name);
 		if(compare<0)
 		{
 			front = malloc(sizeof(Node));
@@ -132,12 +132,12 @@ Node* nodeAddAlpha(Node* head, char** data)
 		}
 		else
 		{
-			while(head->next != NULL && strcmp(*data, nData(head->next)->name)>=0)
+			while(head->next != NULL && strcmp(data->name, nData(head->next)->name)>=0)
 			{
 				head = head->next;
 			}
 			
-			compare = strcmp(*data, nData(head)->name);
+			compare = strcmp(data->name, nData(head)->name);
 			
 			if(compare != 0)
 			{
@@ -167,12 +167,12 @@ void initGeneral(Node* node, void* data, int dataSize)
     node->next = NULL;
 }
 
-void initNameData(Node* node, char** data)
+void initNameData(Node* node, NameData* data)
 {
 	node->data = malloc(sizeof(NameData));
 	NameData* temp = nData(node);
-	temp->name = strdup(*data);
-	temp->freq = 1.0f; 
+	temp->name = strdup(data->name);
+	temp->freq = data->freq; 
 	node->next = NULL;
 }
 
@@ -203,7 +203,7 @@ void deleteList(Node* head, size_t dataSize)
 	}
 }
 
-void addToken(Node* node, char** data) 
+void addToken(Node* node, NameData* data) 
 {
 	nData(node)->freq++;
 	if(node->next == NULL)
@@ -235,8 +235,8 @@ void tokenHelper(Node* node, char* name, int length)
 	temp[b] = '\0';
 	if(b>0) //token contains at least 1 valid character
 	{
-		char* temp2 = temp;
-		addToken(node, &temp2);
+		NameData data = {temp, 1};
+		addToken(node, &data);
 	}
 
 }
@@ -365,7 +365,6 @@ void tokenizer(Node* node, int fd)
 		tokenHelper(node, temp1, strlen(temp1));
 		free(temp1);
 	}
-	//printf("leaving fd %d\n", fd);
 	free(head);
 }
 
@@ -388,9 +387,10 @@ void* fileHandler(void* input)
 		pthread_mutex_lock(args.mut);
 		Node* temp2 = (Node*)(nodeAdd(args.listHead, temp, sizeof(*temp))->data);			
 		pthread_mutex_unlock(args.mut);
-							
-		Node* tokenHead = nodeAdd(temp2, &args.pathName, 3);
-		nData(tokenHead)->freq--;	
+
+		NameData data = {args.pathName, 0};		
+		Node* tokenHead = nodeAdd(temp2, &data, 3);
+
 
 		tokenizer(tokenHead, fd);
 
@@ -454,7 +454,6 @@ void* directoryHandler(void* in)
 	DIR *d;
 
     d = opendir(args->pathName);
-	printf("pathname is %s\n", args->pathName);
 
     if(d==NULL)
     {
@@ -534,10 +533,10 @@ double analyzePair(Node* in1, Node* in2)
 		NameData* data1 = (NameData*)token1->data;
 		double freq1 = data1->freq;
 		double freq2 = findTokenName(token2, data1->name);
-		NameData* construct = malloc(sizeof(NameData));
-		construct->name = data1->name;
-		construct->freq = (freq1+freq2)/2;
-		nodeAdd(meanConstruct, construct, sizeof(NameData));
+		
+		NameData construct = {data1->name, (freq1+freq2)/2};
+		nodeAdd(meanConstruct, &construct, 3);
+		
 		token1 = token1->next;
 	}
 	token1 = in1->next;
@@ -550,10 +549,8 @@ double analyzePair(Node* in1, Node* in2)
 		if(freq1 == 0)
 		{
 			//printf("NON DUPLICATE TOKEN: %s\n", data2->name);
-			NameData* construct = malloc(sizeof(NameData));
-			construct->name = data2->name;
-			construct->freq = (freq2)/2;
-			nodeAdd(meanConstruct, construct, sizeof(NameData));
+			NameData construct = {data2->name, (freq2)/2};
+			nodeAdd(meanConstruct, &construct, 3);
 		}
 		token2 = token2->next;
 	}
@@ -685,7 +682,7 @@ int main(int argc, char *argv[])
 
     pthread_create(&t, NULL, &directoryHandler, a);
     pthread_join(t, NULL);
-	printTest(bigList);
+	//printTest(bigList);
 	
     //Pre-Analysis
     if(bigList->data == NULL)
@@ -698,6 +695,6 @@ int main(int argc, char *argv[])
         perror("Warning: only one entry");
 		return EXIT_SUCCESS;
     }
-	printf("analyzing\n");
-	//analyze(bigList);
+	//printf("analyzing\n");
+	analyze(bigList);
 }
