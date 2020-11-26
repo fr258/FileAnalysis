@@ -107,9 +107,7 @@ Node* nodeAdd(Node* head, void* data, int dataSize)
 	}
 	else
 	{
-		//printf("nodeAdd to call initGeneral\n");
-		//printf("We have access to head: %ld\n", sizeof(head));
-		//printf("We have access to data: %ld\n", sizeof(data));
+
 		initGeneral(head, data, dataSize);
 	}
 	return head;
@@ -164,19 +162,9 @@ Node* nodeAddAlpha(Node* head, char** data)
 
 void initGeneral(Node* node, void* data, int dataSize)
 {
-    //printf("begin initGeneral\n");
-    
-    /*if(node == NULL)
-        printf("node is null\n");
-    else
-        printf("node isn't null\n");*/
-    
-    //printf("dataSize is %d\n", dataSize);
     node->data = malloc(dataSize);
     memcpy(node->data, data, dataSize);
     node->next = NULL;
-    
-    //printf("initGeneral success\n");
 }
 
 void initNameData(Node* node, char** data)
@@ -267,26 +255,53 @@ void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int len
 	}
 }
 
+ char* my_strtok(char** currStr)
+{
+	int length = strlen(*currStr);
+	int found = 0;
+	int i = 0;
+	
+	for(i = 0; i<length && !found; i++)
+	{		
+		if((*currStr)[i] != ' ' && (*currStr)[i] != '\n')
+		{
+			found = 1;
+			*(currStr) = *(currStr) + i;
+		}
+	}	
+	if(found != 0)
+	{
+		found = 0;
+		for(i = 0; i<length && !found; i++)
+		{
+			if((*currStr)[i]==' ' || (*currStr)[i]=='\n')
+			{
+				(*currStr)[i]='\0'; 
+				found = 1;		
+			}
+		}	
+		char* temp = *currStr;
+		*currStr = *(currStr)+i;
+		return temp;
+	}
+	return NULL;
+}
+
 void tokenizer(Node* node, int fd)
 {
-	//printf("entering fd %d\n", fd);
-	char* saveptr;
 	int bytes;
 	int length;
-	char buffer[BUFFSIZE+1];
+	char* buffer = malloc(BUFFSIZE+1);
+	char* head = buffer; 
 	int inBuffer;
 	char* temp1 = NULL, *temp2 = NULL;
 	int isCont = 0; //is continued from previous token?
 	buffer[BUFFSIZE] = '\0';
-	
-	char* delim = "\n ";
 	char* token;
 	
-	bytes =  read(fd, buffer, BUFFSIZE);
-	//printf("-------------------------------------------------------------------------------------------------------------------------\n%s\n", buffer);
+	bytes =  read(fd, head, BUFFSIZE);
 	
-	
-	token = strtok_r(buffer, delim, &saveptr); 
+	token = my_strtok(&buffer); 
 
 	while(bytes>0)
 	{
@@ -298,11 +313,11 @@ void tokenizer(Node* node, int fd)
 			
 			if(isCont == 1)
 			{			
-				if(buffer[0]==' ' || buffer[0]=='\n')
+				if(head[0]==' ' || head[0]=='\n')
 				{
 					tokenHelper(node, temp1, strlen(temp1));
 					free(temp1);
-					tokenHelperTwo(node, token,buffer,&temp1,length,&isCont);
+					tokenHelperTwo(node, token, head, &temp1, length, &isCont);
 				}
 				else
 				{
@@ -311,7 +326,7 @@ void tokenizer(Node* node, int fd)
 					strcat(temp2, token);
 					free(temp1);
 					temp1 = temp2;
-					if(token-buffer+length < BUFFSIZE)
+					if(token-head+length < BUFFSIZE)
 					{
 						tokenHelper(node, temp1, strlen(temp1));
 						free(temp1);
@@ -321,19 +336,19 @@ void tokenizer(Node* node, int fd)
 			}
 			else
 			{			
-				tokenHelperTwo(node,token,buffer,&temp1,length,&isCont);				
+				tokenHelperTwo(node,token,head,&temp1,length,&isCont);				
 			}	
 		
-			token = strtok_r(NULL, delim, &saveptr);
+			token = my_strtok(&buffer);
 
 			
 		} //end while token
 		
-		bytes =  read(fd, buffer, BUFFSIZE);
+		bytes =  read(fd, head, BUFFSIZE);
+		buffer = head;
 		buffer[bytes] = '\0';
-		//printf("-------------------------------------------------------------------------------------------------------------------------\n%s\n", buffer);
 
-		token = strtok_r(buffer, delim, &saveptr);
+		token = my_strtok(&buffer); 
 
 		if(inBuffer == 0 && isCont == 1)
 		{
@@ -351,44 +366,33 @@ void tokenizer(Node* node, int fd)
 		free(temp1);
 	}
 	//printf("leaving fd %d\n", fd);
+	free(head);
 }
+
 
 void* fileHandler(void* input)
 {
 	Args args = *(Args*)input;
-	//printf("opening %s\n", args.pathName);
 	int fd = open(args.pathName, O_RDONLY);
 
-	//printf("%s", args.pathName);
 	if(fd<0)
 	{
 		perror(args.pathName);
-	}
-	
+	}	
 	else
 	{
 		Node* temp = malloc(sizeof(Node));
 		temp->next = NULL;
 		temp->data = NULL;	
 		
-		
 		pthread_mutex_lock(args.mut);
 		Node* temp2 = (Node*)(nodeAdd(args.listHead, temp, sizeof(*temp))->data);			
 		pthread_mutex_unlock(args.mut);
-				
-				
-				
+							
 		Node* tokenHead = nodeAdd(temp2, &args.pathName, 3);
 		nData(tokenHead)->freq--;	
 
-
-		
-		//pthread_mutex_lock(args.mut);
 		tokenizer(tokenHead, fd);
-		//pthread_mutex_unlock(args.mut);
-		
-
-
 
 		int count = (int)nData(tokenHead)->freq;
 		Iterator iter = {tokenHead};
@@ -402,7 +406,6 @@ void* fileHandler(void* input)
 		free(temp);
 
 	}
-	//printf("closed fd %d\n", fd);
 	close(fd);
 	return NULL;
 }
@@ -420,25 +423,6 @@ double findTokenName(Node* head, char* name)
 		temp = temp->next;
 	}
 	return 0;
-	/*Iterator iter = {head};
-	Node* temp;
-	int compare;
-	while(hasNext(&iter))
-	{
-		temp = (next(&iter));
-		compare = strcmp(name, nData(temp)->name);
-		if(compare==0)
-		{
-			printf("found: %s\n", name);
-			return nData(temp)->freq;
-		}
-		else if(compare<0)
-		{
-			return 0.0;
-		}
-		
-	}
-	return 0;*/
 }
 
 
@@ -446,7 +430,7 @@ char* pathGenerator(char* path, char* name)
 {
     int p = strlen(path);
     int n = strlen(name);
-    char* newPath = malloc(p+n+1);
+    char* newPath = malloc(p+n+2);
     for(int i = 0; i<p; i++)
     {
         newPath[i] = path[i];
@@ -456,13 +440,6 @@ char* pathGenerator(char* path, char* name)
     {
         newPath[j] = name[j-(p+1)];
     }
-	
-	
-	/*strcpy(newPath, path);
-	strcat(newPath, "/");
-	strcat(newPath, name);
-	
-	printf("%s\n", newPath);*/
 	
     return newPath;
 }
@@ -474,12 +451,18 @@ void* directoryHandler(void* in)
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
     //checks if directory is accessible, if not returns an error
-    DIR *d = opendir(args->pathName);
-    if(!d)
+	DIR *d;
+
+    d = opendir(args->pathName);
+	printf("pathname is %s\n", args->pathName);
+
+    if(d==NULL)
     {
         printf("There was an error with the directory at: %s", args->pathName);
-        return 0;
+	   //perror(d);
+        return NULL;
     }
+
     //create list of threads for each item unearthed in this directory
     Node threads = {NULL, NULL};
     //store pointer to the head for later
@@ -524,6 +507,8 @@ void* directoryHandler(void* in)
         pthread_join(*(pthread_t*)nextData(&iter), NULL);
     }
     closedir(d);
+	deleteList(&threads, 0);
+	
 	return NULL;
 }
 
@@ -700,7 +685,7 @@ int main(int argc, char *argv[])
 
     pthread_create(&t, NULL, &directoryHandler, a);
     pthread_join(t, NULL);
-	//printTest(bigList);
+	printTest(bigList);
 	
     //Pre-Analysis
     if(bigList->data == NULL)
@@ -714,5 +699,5 @@ int main(int argc, char *argv[])
 		return EXIT_SUCCESS;
     }
 	printf("analyzing\n");
-	analyze(bigList);
+	//analyze(bigList);
 }
