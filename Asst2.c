@@ -127,8 +127,10 @@ int compareStr(void* one, void* two)
 }
 
 int compareCountNameData(void* one, void* two)
-{
-	return 0;
+{	
+	Node* nOne = (Node*) one;
+	Node* nTwo = (Node*) two;
+	return nData(nOne)->freq - nData(nTwo)->freq;
 }
 
 int compareCountOutput(void* one, void* two)
@@ -147,7 +149,8 @@ Node* nodeAddSort(Node* head, void* data, int key)
 	if(key == 0)
 	{
 		compare = compareCountNameData;
-		init = initNameData;
+		size = sizeof(Node);
+		init = initGeneral;
 	}
 	else if(key == 1)
 	{
@@ -427,22 +430,21 @@ void* fileHandler(void* input)
 	}	
 	else
 	{
-		Node* temp = malloc(sizeof(Node));
-		temp->next = NULL;
-		temp->data = NULL;	
+
+		Node* file = malloc(sizeof(Node));
+		file->next = NULL;
+		file->data = malloc(sizeof(NameData));
+		nData(file)->freq = 0;
+		nData(file)->name = strdup(args.pathName);
 		
+		tokenizer(file, fd);
+
 		pthread_mutex_lock(args.mut);
-		Node* temp2 = (Node*)(nodeAdd(args.listHead, temp, sizeof(*temp))->data);			
+		args.listHead = nodeAddSort(args.listHead, file, 0);
 		pthread_mutex_unlock(args.mut);
-
-		NameData data = {args.pathName, 0};		
-		Node* tokenHead = nodeAdd(temp2, &data, 3);
-
-
-		tokenizer(tokenHead, fd);
-
-		int count = (int)nData(tokenHead)->freq;
-		Iterator iter = {tokenHead};
+		
+		int count = (int)nData(file)->freq;
+		Iterator iter = {file};
 		double* freq;
 		next(&iter);
 		while(hasNext(&iter))
@@ -450,7 +452,6 @@ void* fileHandler(void* input)
 			freq = &nData(next(&iter))->freq;
 			*freq = *freq / count;
 		}
-		free(temp);
 
 	}
 	close(fd);
@@ -621,10 +622,8 @@ double analyzePair(Node* in1, Node* in2)
 		token1 = token1->next;
 	}
 	/*printf("kld1: %f\n", kld1);
-
 	char* test = malloc(sizeof(char));
 	*test = 'a';
-
 	printf("frequency of a in meanConstruct: %f\n", findTokenName(meanConstruct, test));*/
 
 
@@ -742,6 +741,27 @@ int main(int argc, char *argv[])
         printf("Warning: only one entry");
 		return EXIT_SUCCESS;
     }
-	//printf("analyzing\n");
+	printf("analyzing\n");
 	analyze(bigList);
+	
+	
+	Iterator iter = {bigList};
+	while(hasNext(&iter))
+	{
+		Node* temp = (Node*)(next(&iter)->data);
+		deleteList(temp, 3);	
+	}
+	deleteList(bigList, 0);
+	free(bigList);
 }
+
+
+
+
+
+
+
+
+
+
+
