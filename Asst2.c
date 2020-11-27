@@ -505,7 +505,7 @@ void* directoryHandler(void* in)
 
     if(d==NULL)
     {
-        printf("There was an error with the directory at: %s", args->pathName);
+        printf("There was an error with the directory at: %s\n", args->pathName);
 	   //perror(d);
         return NULL;
     }
@@ -716,6 +716,11 @@ void printTest(Node* in)
 int main(int argc, char *argv[])
 {
     //call a thread with the following arguments for the directory handler funciton:
+	if(argc<2)
+	{
+		printf("No directory passed\n");
+		return EXIT_SUCCESS;
+	}
     Args *a = malloc(sizeof(Args));
     Node *bigList = malloc(sizeof(Node));
     bigList->data = NULL;
@@ -733,12 +738,12 @@ int main(int argc, char *argv[])
     //Pre-Analysis
     if(bigList->data == NULL)
     {
-        printf("No data written");
+        printf("No data written\n");
         return EXIT_SUCCESS;
     }
     if(listLength(bigList)==1)
     {
-        printf("Warning: only one entry");
+        printf("Warning: only one entry\n");
 		return EXIT_SUCCESS;
     }
 	printf("analyzing\n");
