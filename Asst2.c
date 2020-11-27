@@ -36,7 +36,15 @@ typedef struct
 } NameData;
 
 void initGeneral(Node* node, void* data, int dataSize);
-void initNameData(Node* node, NameData* data);
+void initNameData(Node* node, void* data, int temp);
+
+typedef struct outputNodeList
+{
+    char* name1;
+    char* name2;
+    double distance;
+    int count;
+} outputNode;
 
 typedef struct threadListNode
 {
@@ -103,7 +111,7 @@ Node* nodeAdd(Node* head, void* data, int dataSize)
 	if(dataSize == 3)
 	{
 		//printf("nodeAdd to call initNameData");
-		initNameData(head, data);
+		initNameData(head, data, 0);
 	}
 	else
 	{
@@ -113,49 +121,87 @@ Node* nodeAdd(Node* head, void* data, int dataSize)
 	return head;
 }
 
-Node* nodeAddAlpha(Node* head, NameData* data)
+int compareStr(void* one, void* two)
+{
+	return strcmp(((NameData*)one)->name, ((NameData*)two)->name);
+}
+
+int compareCountNameData(void* one, void* two)
+{
+	return 0;
+}
+
+int compareCountOutput(void* one, void* two)
+{
+	return ((outputNode*)one)->count - ((outputNode*)two)->count;
+}
+
+
+Node* nodeAddSort(Node* head, void* data, int key)
 {
 	Node* front = head; 
+	int (*compare) (void*, void*);
+	void (*init) (Node*, void*, int);
+	int size = 0;
+	
+	if(key == 0)
+	{
+		compare = compareCountNameData;
+		init = initNameData;
+	}
+	else if(key == 1)
+	{
+		compare = compareStr;
+		init = initNameData;
+	}
+	else if(key == 2)
+	{
+		compare = compareCountOutput;
+		init = initGeneral;
+		size = sizeof(outputNode);
+	}
+
 	if(nData(head)!=NULL)
 	{
 		Node *temp;
-		int compare = strcmp(data->name, nData(head)->name);
-		if(compare<0)
+		int diff = compare(data, head->data);
+		if(diff<0)
 		{
 			front = malloc(sizeof(Node));
-			initNameData(front, data);
+			init(front, data, size);
 			front->next = head;
 		}
-		else if(compare == 0)
+		else if(diff == 0)
 		{
 			nData(head)->freq++;
 		}
 		else
 		{
-			while(head->next != NULL && strcmp(data->name, nData(head->next)->name)>=0)
+			while(head->next != NULL && compare(data, head->next->data) >= 0)
 			{
 				head = head->next;
 			}
 			
-			compare = strcmp(data->name, nData(head)->name);
+			diff = compare(data, head->data);
 			
-			if(compare != 0)
+			if(diff == 0 && key==1)
+			{
+				nData(head)->freq++;
+			}
+			else
 			{
 				temp = malloc(sizeof(Node));
-				initNameData(temp, data);
+				init(temp, data, size);
 				
 				temp->next = head->next;
 				head->next = temp;	
 			}
-			else if(compare == 0)
-			{
-				nData(head)->freq++;
-			}
+
 		}
 	}
 	else
 	{
-		initNameData(head, data);
+		init(head, data, size);
 	}
 	return front;
 }
@@ -167,8 +213,9 @@ void initGeneral(Node* node, void* data, int dataSize)
     node->next = NULL;
 }
 
-void initNameData(Node* node, NameData* data)
+void initNameData(Node* node, void* in, int placeholder)
 {
+	NameData* data = (NameData*) in;
 	node->data = malloc(sizeof(NameData));
 	NameData* temp = nData(node);
 	temp->name = strdup(data->name);
@@ -212,7 +259,7 @@ void addToken(Node* node, NameData* data)
 		node->next->next = NULL;
 		node->next->data = NULL;
 	}
-	node->next = nodeAddAlpha(node->next, data);
+	node->next = nodeAddSort(node->next, data, 1);
 }
 
 void tokenHelper(Node* node, char* name, int length)
@@ -457,7 +504,7 @@ void* directoryHandler(void* in)
 
     if(d==NULL)
     {
-        printf("There was an error with the directory at: %s\n", args->pathName);
+        printf("There was an error with the directory at: %s", args->pathName);
 	   //perror(d);
         return NULL;
     }
@@ -574,8 +621,10 @@ double analyzePair(Node* in1, Node* in2)
 		token1 = token1->next;
 	}
 	/*printf("kld1: %f\n", kld1);
+
 	char* test = malloc(sizeof(char));
 	*test = 'a';
+
 	printf("frequency of a in meanConstruct: %f\n", findTokenName(meanConstruct, test));*/
 
 
@@ -646,7 +695,7 @@ void analyze(Node* in)
 void printTest(Node* in)
 {
     Node* current = in;
-    while(current!=NULL && current->data!=NULL)
+    while(current!=NULL && current->data != NULL)
     {
         Node* tokens = (Node*)current->data;
         NameData* info = (NameData*)tokens->data;
@@ -685,17 +734,14 @@ int main(int argc, char *argv[])
     //Pre-Analysis
     if(bigList->data == NULL)
     {
-        printf("No data written\n");
+        printf("No data written");
         return EXIT_SUCCESS;
     }
-    else if(listLength(bigList)==1)
+    if(listLength(bigList)==1)
     {
-        printf("Warning: only one entry\n");
+        printf("Warning: only one entry");
 		return EXIT_SUCCESS;
     }
-    else 
-    {
-        analyze(bigList);
-    }
 	//printf("analyzing\n");
+	analyze(bigList);
 }
