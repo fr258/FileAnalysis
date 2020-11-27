@@ -457,7 +457,7 @@ void* directoryHandler(void* in)
 
     if(d==NULL)
     {
-        printf("There was an error with the directory at: %s", args->pathName);
+        printf("There was an error with the directory at: %s\n", args->pathName);
 	   //perror(d);
         return NULL;
     }
@@ -574,10 +574,8 @@ double analyzePair(Node* in1, Node* in2)
 		token1 = token1->next;
 	}
 	/*printf("kld1: %f\n", kld1);
-
 	char* test = malloc(sizeof(char));
 	*test = 'a';
-
 	printf("frequency of a in meanConstruct: %f\n", findTokenName(meanConstruct, test));*/
 
 
@@ -648,7 +646,7 @@ void analyze(Node* in)
 void printTest(Node* in)
 {
     Node* current = in;
-    while(current!=NULL)
+    while(current!=NULL && current->data!=NULL)
     {
         Node* tokens = (Node*)current->data;
         NameData* info = (NameData*)tokens->data;
@@ -687,14 +685,17 @@ int main(int argc, char *argv[])
     //Pre-Analysis
     if(bigList->data == NULL)
     {
-        perror("No data written");
+        printf("No data written\n");
         return EXIT_SUCCESS;
     }
-    if(listLength(bigList)==1)
+    else if(listLength(bigList)==1)
     {
-        perror("Warning: only one entry");
+        printf("Warning: only one entry\n");
 		return EXIT_SUCCESS;
     }
+    else 
+    {
+        analyze(bigList);
+    }
 	//printf("analyzing\n");
-	analyze(bigList);
 }
