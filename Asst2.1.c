@@ -373,7 +373,7 @@ void tokenizer(Node* node, int fd)
 	char* token;
 	
 	bytes =  read(fd, head, BUFFSIZE);
-	
+	//printf("|%s|\n", buffer); 
 	token = my_strtok(&buffer); 
 
 	while(bytes>0)
@@ -420,6 +420,8 @@ void tokenizer(Node* node, int fd)
 		bytes =  read(fd, head, BUFFSIZE);
 		buffer = head;
 		buffer[bytes] = '\0';
+		
+		//printf("|%s|\n", buffer); 
 
 		token = my_strtok(&buffer); 
 
@@ -537,33 +539,39 @@ void* directoryHandler(void* in)
 
     //iterate through every item in the directory. Two cases: file or directory
     struct dirent *dp;
+	dp = readdir(d);
+	dp = readdir(d);
     while((dp = readdir(d)) != NULL)
     {
-
-		Args *a1 = malloc(sizeof(struct Arguments));
-        a1->listHead = args->listHead;
-        a1->mut = args->mut;
-        a1->pathName = pathGenerator(args->pathName, dp->d_name);
-        pthread_t t1;
-		
         if(dp->d_type==DT_DIR)
         {
             //Create thread with directoryHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-			if(strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") !=0)
-			{
+
+		
+			//if((strcmp(dp->d_name, ".") != 0) && (strcmp(dp->d_name, "..") !=0))
+			//{
+				Args *a1 = malloc(sizeof(struct Arguments));
+				a1->listHead = args->listHead;
+				a1->mut = args->mut;
+				a1->pathName = pathGenerator(args->pathName, dp->d_name);
+				pthread_t t1;
 				notEmpty = 1;
 				pthread_create(&t1, NULL, &directoryHandler, a1);
 				add(threads, t1);
-			}
+			//}
         }
         else if(dp->d_type==DT_REG)
         {
             //Create thread with fileHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-
+			Args *a1 = malloc(sizeof(struct Arguments));
+			a1->listHead = args->listHead;
+			a1->mut = args->mut;
+			a1->pathName = pathGenerator(args->pathName, dp->d_name);
+			pthread_t t1;
 			notEmpty = 1;
             pthread_create(&t1, NULL, &fileHandler, a1);
 			add(threads, t1);
@@ -585,6 +593,8 @@ void* directoryHandler(void* in)
 			pthread_join(*(pthread_t*)nextData(&iter), NULL);
 		}
 	}
+	//else
+		//printf("passed empty path %s\n", args->pathName);
 
     closedir(d);
 	deleteList(&threads, 0);
@@ -783,7 +793,7 @@ int main(int argc, char *argv[])
 
     pthread_create(&t, NULL, &directoryHandler, a);
     pthread_join(t, NULL);
-	//printTest(bigList);
+	printTest(bigList);
 	
     //Pre-Analysis
     if(bigList->data == NULL)
@@ -798,7 +808,7 @@ int main(int argc, char *argv[])
     }
     else 
     {
-        analyze(bigList);
+        //analyze(bigList);
     }
 	
 	
