@@ -533,7 +533,7 @@ void* directoryHandler(void* in)
 				add(threads, t1);
 			}
         }
-        else
+        else if(dp->d_type==DT_REG)
         {
             //Create thread with fileHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
