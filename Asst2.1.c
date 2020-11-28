@@ -313,6 +313,7 @@ void tokenHelper(Node* node, char* name, int length)
 
 }
 
+//frequently occuring
 void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int length, int* isCont)
 {
 	if(token-buffer+length < BUFFSIZE)
@@ -515,7 +516,7 @@ char* pathGenerator(char* path, char* name)
 
 void* directoryHandler(void* in)
 {
-	//int notEmpty = 0;
+	int notEmpty = 0;
 	//printf("in directory handler!\n");
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
@@ -552,7 +553,7 @@ void* directoryHandler(void* in)
             //Adds this thread to the linkedlist of threads associated with this particular function call
 			if(strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") !=0)
 			{
-				//notEmpty = 1;
+				notEmpty = 1;
 				pthread_create(&t1, NULL, &directoryHandler, a1);
 				add(threads, t1);
 			}
@@ -563,6 +564,7 @@ void* directoryHandler(void* in)
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
 
+			notEmpty = 1;
             pthread_create(&t1, NULL, &fileHandler, a1);
 			add(threads, t1);
 
@@ -575,14 +577,14 @@ void* directoryHandler(void* in)
     }
     //go through list and join threads
 
-	//if(notEmpty)
-	//{
+	if(notEmpty)
+	{
 		Iterator iter = {&threads};
 		while(hasNext(&iter))
 		{
 			pthread_join(*(pthread_t*)nextData(&iter), NULL);
 		}
-	//}
+	}
 
     closedir(d);
 	deleteList(&threads, 0);
