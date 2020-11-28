@@ -21,6 +21,7 @@
 #define ANSI_COLOR_WHITE   "\x1b[37m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
  
+//general node for linked list
 typedef struct listNode
 {
     void* data;
@@ -28,6 +29,7 @@ typedef struct listNode
 	
 } Node;
 
+//node data for linked list
 typedef struct 
 {
 	char* name;
@@ -38,6 +40,7 @@ typedef struct
 void initGeneral(Node* node, void* data, int dataSize);
 void initNameData(Node* node, void* data, int temp);
 
+//node data for jensen-shannon distance
 typedef struct outputStructType
 {
     char* name1;
@@ -46,18 +49,16 @@ typedef struct outputStructType
     int count;
 } outputStruct;
 
-typedef struct threadListNode
-{
-	pthread_t* data;
-	struct threadListNode* next;
-} threadNode;
-
+//returns a linked list iterator
+//head must not be null
 typedef struct
 {
 	Node* head;
 	
 } Iterator;
 
+//arguments for file and directory threads
+//pathName, mutex pointer, and node must not be null
 typedef struct Arguments
 {
   char* pathName;
@@ -65,38 +66,44 @@ typedef struct Arguments
   Node* listHead;
 } Args;
 
+//returns the next value in a linked list
+//iterator passed must not be null
 Node* next(Iterator* iter)
 {
 	if(iter->head != NULL)
 	{
-		Node* temp = iter->head;
-		iter->head = iter->head->next;
-		return temp; 
+		Node* temp = iter->head; //save current head
+		iter->head = iter->head->next; //set head in iterator to next node
+		return temp; //return current head
 	}
 	return NULL;
 }
 
+//first returns data of the head node, and after that returns following node's data until a pointer to NULL is hit.
+//precondition: Iterator passed is valid and not null and the final valid node points to null.
 void* nextData(Iterator* iter)
 {
 	if(iter->head != NULL)
 	{
-		Node* temp = iter->head;
-		iter->head = iter->head->next;
+		Node* temp = iter->head; //will return data of current node stored by iterator
+		iter->head = iter->head->next; //set iterator to store next node whose data will be returned by next()
 		return temp->data; 
 	}
 	return NULL;
 }
 
+//returns if at lesat one more node with data exists in list
+//iterator must not be null
 int hasNext(Iterator* iter)
 {
 	return (iter->head != NULL);
 }
 
 //precondition: head isn't null and was initialized to {NULL, NULL}
+//adds node to back of current list
 Node* nodeAdd(Node* head, void* data, int dataSize)
 {
-	//printf("nodeAdd called\n");
-	if(head->data != NULL)
+	if(head->data != NULL) //at least one node exists in list
 	{
 		while(head->next != NULL)
 		{
@@ -107,25 +114,26 @@ Node* nodeAdd(Node* head, void* data, int dataSize)
 		head = head->next;
 		
 	}
-	//printf("sequence 1 complete\n");
-	if(dataSize == 3)
+	if(dataSize == 3) //node data is of type NameData
 	{
-		//printf("nodeAdd to call initNameData");
 		initNameData(head, data, 0);
 	}
-	else
+	else //node data type is unknown, will be copied by bytes
 	{
-
 		initGeneral(head, data, dataSize);
 	}
 	return head;
 }
 
+//expects two NameData structs that are not null
+//returns difference between names stored in both
 int compareStr(void* one, void* two)
 {
 	return strcmp(((NameData*)one)->name, ((NameData*)two)->name);
 }
 
+//expects two nodes that are not null
+//returns difference between frequencies stored in both
 int compareCountNameData(void* one, void* two)
 {	
 	Node* nOne = (Node*) one;
@@ -133,12 +141,19 @@ int compareCountNameData(void* one, void* two)
 	return nData(nOne)->freq - nData(nTwo)->freq;
 }
 
+//expects two OutputNode structs that are not null
+//returns difference between counts stored in both
 int compareCountOutput(void* one, void* two)
 {
 	return ((outputStruct*)one)->count - ((outputStruct*)two)->count;
 }
 
-
+//expects head to be initialized to NULL, NULL and for head to not be null
+//adds node in order in list, relying on key to tell what comparison to use
+// 0 says to compare node frequencies, with node data of type NameData
+// 1 says to compare node names, with node data of type NameData
+// 2 says to compare node counts, with node data of type OutputNode
+//returns head of list
 Node* nodeAddSort(Node* head, void* data, int key)
 {
 	Node* front = head; 
@@ -146,52 +161,52 @@ Node* nodeAddSort(Node* head, void* data, int key)
 	void (*init) (Node*, void*, int);
 	int size = 0;
 	
-	if(key == 0)
+	if(key == 0) //passed a list of linked lists-- compare head nodes' token counts
 	{
 		compare = compareCountNameData;
 		size = sizeof(Node);
 		init = initGeneral;
 	}
-	else if(key == 1)
+	else if(key == 1) //passed a linked list with data type NameData-- compare node names
 	{
 		compare = compareStr;
 		init = initNameData;
 	}
-	else if(key == 2)
+	else if(key == 2) //passed a linked list with data type OutputNode-- compare node counts
 	{
 		compare = compareCountOutput;
 		init = initGeneral;
 		size = sizeof(outputStruct);
 	}
 
-	if(nData(head)!=NULL)
+	if(head->data!=NULL) //at least one node already in list
 	{
 		Node *temp;
 		int diff = compare(data, head->data);
-		if(diff<0)
+		if(diff<0) //passed data is smaller than head node
 		{
 			front = malloc(sizeof(Node));
 			init(front, data, size);
-			front->next = head;
+			front->next = head; //set passed data to new front node
 		}
-		else if(diff == 0 && key == 1)
+		else if(diff == 0 && key == 1) //passed token equals current token
 		{
-			nData(head)->freq++;
+			nData(head)->freq++; //increment frequency of token
 		}
 		else
 		{
-			while(head->next != NULL && compare(data, head->next->data) >= 0)
+			while(head->next != NULL && compare(data, head->next->data) >= 0) //travel through list while passed data is larger than current data
 			{
 				head = head->next;
 			}
 			
 			diff = compare(data, head->data);
 			
-			if(diff == 0 && key==1)
+			if(diff == 0 && key==1) //passed token equals current token
 			{
-				nData(head)->freq++;
+				nData(head)->freq++; //increment frequency of token
 			}
-			else
+			else //add token to list 
 			{
 				temp = malloc(sizeof(Node));
 				init(temp, data, size);
@@ -202,13 +217,17 @@ Node* nodeAddSort(Node* head, void* data, int key)
 
 		}
 	}
-	else
+	else //passed data will be first node in list 
 	{
 		init(head, data, size);
 	}
-	return front;
+	return front; //return head of list
 }
 
+
+//initialize data by copying bytes
+//expects node to not be null
+//expects dataSize to be size of what data points to
 void initGeneral(Node* node, void* data, int dataSize)
 {
     node->data = malloc(dataSize);
@@ -216,6 +235,9 @@ void initGeneral(Node* node, void* data, int dataSize)
     node->next = NULL;
 }
 
+//initialize data of type NameData
+//expects node to not be null
+//placeholder does nothing besides results in same function args as initGeneral for function pointer compatibility
 void initNameData(Node* node, void* in, int placeholder)
 {
 	NameData* data = (NameData*) in;
