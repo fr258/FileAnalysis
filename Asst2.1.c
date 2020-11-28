@@ -492,7 +492,7 @@ char* pathGenerator(char* path, char* name)
 
 void* directoryHandler(void* in)
 {
-	
+	int notEmpty = 0;
 	//printf("in directory handler!\n");
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
@@ -504,7 +504,6 @@ void* directoryHandler(void* in)
     if(d==NULL)
     {
         printf("There was an error with the directory at: %s\n", args->pathName);
-	   //perror(d);
         return NULL;
     }
 
@@ -516,6 +515,7 @@ void* directoryHandler(void* in)
     struct dirent *dp;
     while((dp = readdir(d)) != NULL)
     {
+
 		Args *a1 = malloc(sizeof(struct Arguments));
         a1->listHead = args->listHead;
         a1->mut = args->mut;
@@ -529,6 +529,7 @@ void* directoryHandler(void* in)
             //Adds this thread to the linkedlist of threads associated with this particular function call
 			if(strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") !=0)
 			{
+				notEmpty = 1;
 				pthread_create(&t1, NULL, &directoryHandler, a1);
 				add(threads, t1);
 			}
@@ -543,14 +544,23 @@ void* directoryHandler(void* in)
 			add(threads, t1);
 
         }
+		else
+		{
+			printf("invalid\n");
+		}
 
     }
     //go through list and join threads
-	Iterator iter = {&threads};
-    while(hasNext(&iter))
-    {
-        pthread_join(*(pthread_t*)nextData(&iter), NULL);
-    }
+
+	if(notEmpty)
+	{
+		Iterator iter = {&threads};
+		while(hasNext(&iter))
+		{
+			pthread_join(*(pthread_t*)nextData(&iter), NULL);
+		}
+	}
+
     closedir(d);
 	deleteList(&threads, 0);
 	
