@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,11 +8,19 @@
 #include <pthread.h>
 #include <fcntl.h>
 
+
 #define add(X,Y) nodeAdd(&X, &Y, sizeof(Y))
 #define nData(X) ((NameData*)X->data)
 #define BUFFSIZE 256
 
-//generic node in linked list
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34;1m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_WHITE   "\x1b[37m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+ 
 typedef struct listNode
 {
     void* data;
@@ -19,10 +28,6 @@ typedef struct listNode
 	
 } Node;
 
-void initGeneral(Node* node, void* data, int dataSize);
-void initNameData(Node* node, char** data);
-
-//node to hold filename and count or token and frequency
 typedef struct 
 {
 	char* name;
@@ -30,14 +35,29 @@ typedef struct
 	
 } NameData;
 
-//standard iterator which works with next() and hasNext()
+void initGeneral(Node* node, void* data, int dataSize);
+void initNameData(Node* node, void* data, int temp);
+
+typedef struct outputStructType
+{
+    char* name1;
+    char* name2;
+    double distance;
+    int count;
+} outputStruct;
+
+typedef struct threadListNode
+{
+	pthread_t* data;
+	struct threadListNode* next;
+} threadNode;
+
 typedef struct
 {
 	Node* head;
 	
 } Iterator;
 
-//arguments which are passed to fileHandler
 typedef struct Arguments
 {
   char* pathName;
@@ -45,190 +65,215 @@ typedef struct Arguments
   Node* listHead;
 } Args;
 
-//first returns the head node, and after that returns the following node until a pointer to NULL is hit.
-//precondition: Iterator passed is valid and not null and the final valid node points to null.
 Node* next(Iterator* iter)
 {
 	if(iter->head != NULL)
 	{
-		Node* temp = iter->head; //will return current node stored by iterator
-		iter->head = iter->head->next; //set iterator to store next node to be returned by next()
+		Node* temp = iter->head;
+		iter->head = iter->head->next;
 		return temp; 
 	}
 	return NULL;
 }
 
-//first returns data of the head node, and after that returns following node's data until a pointer to NULL is hit.
-//precondition: Iterator passed is valid and not null and the final valid node points to null.
 void* nextData(Iterator* iter)
 {
 	if(iter->head != NULL)
 	{
-		Node* temp = iter->head; //will return data of current node stored by iterator
-		iter->head = iter->head->next; //set iterator to store next node whose data will be returned by next()
+		Node* temp = iter->head;
+		iter->head = iter->head->next;
 		return temp->data; 
 	}
 	return NULL;
 }
-//returns if iterator doesn't point to end of list
-//precondition: Iterator passed is valid and not null and the final valid node points to null.
+
 int hasNext(Iterator* iter)
 {
 	return (iter->head != NULL);
 }
 
 //precondition: head isn't null and was initialized to {NULL, NULL}
-//adds node to end of list
-//returns pointer to newly created node
 Node* nodeAdd(Node* head, void* data, int dataSize)
 {
+	//printf("nodeAdd called\n");
 	if(head->data != NULL)
 	{
-		while(head->next != NULL) //travel to end of list
+		while(head->next != NULL)
 		{
 			head = head->next;
 		}
 		
-		head->next = malloc(sizeof(Node)); //create new list
+		head->next = malloc(sizeof(Node));
 		head = head->next;
+		
 	}
-
-	if(dataSize == 3) //if specified, assume data is NameData
+	//printf("sequence 1 complete\n");
+	if(dataSize == 3)
 	{
-		initNameData(head, data);
+		//printf("nodeAdd to call initNameData");
+		initNameData(head, data, 0);
 	}
 	else
 	{
-		initGeneral(head, data, dataSize); //otherwise, copy data to node by bytes
+
+		initGeneral(head, data, dataSize);
 	}
 	return head;
 }
 
-//inserts node with data type NameData into list alphabetically and returns the head of the list
-//assumes that head and data aren't null and that valid node points to null
-Node* nodeAddAlpha(Node* head, char** data)
+int compareStr(void* one, void* two)
+{
+	return strcmp(((NameData*)one)->name, ((NameData*)two)->name);
+}
+
+int compareCountNameData(void* one, void* two)
+{	
+	Node* nOne = (Node*) one;
+	Node* nTwo = (Node*) two;
+	return nData(nOne)->freq - nData(nTwo)->freq;
+}
+
+int compareCountOutput(void* one, void* two)
+{
+	return ((outputStruct*)one)->count - ((outputStruct*)two)->count;
+}
+
+
+Node* nodeAddSort(Node* head, void* data, int key)
 {
 	Node* front = head; 
+	int (*compare) (void*, void*);
+	void (*init) (Node*, void*, int);
+	int size = 0;
+	
+	if(key == 0)
+	{
+		compare = compareCountNameData;
+		size = sizeof(Node);
+		init = initGeneral;
+	}
+	else if(key == 1)
+	{
+		compare = compareStr;
+		init = initNameData;
+	}
+	else if(key == 2)
+	{
+		compare = compareCountOutput;
+		init = initGeneral;
+		size = sizeof(outputStruct);
+	}
+
 	if(nData(head)!=NULL)
 	{
 		Node *temp;
-		int compare = strcmp(*data, nData(head)->name);
-		if(compare<0) //data is alphabetically smaller than head of list
+		int diff = compare(data, head->data);
+		if(diff<0)
 		{
-			front = malloc(sizeof(Node)); //set new data to front of list
-			initNameData(front, data);
+			front = malloc(sizeof(Node));
+			init(front, data, size);
 			front->next = head;
 		}
-		else if(compare == 0)
+		else if(diff == 0 && key == 1)
 		{
 			nData(head)->freq++;
 		}
 		else
 		{
-			while(head->next != NULL && strcmp(*data, nData(head->next)->name)>=0)
+			while(head->next != NULL && compare(data, head->next->data) >= 0)
 			{
-				head = head->next; //increment to correct position alphabetically
+				head = head->next;
 			}
 			
-			compare = strcmp(*data, nData(head)->name);
+			diff = compare(data, head->data);
 			
-			if(compare != 0) //token isn't in list, so insert new token
+			if(diff == 0 && key==1)
+			{
+				nData(head)->freq++;
+			}
+			else
 			{
 				temp = malloc(sizeof(Node));
-				initNameData(temp, data);
+				init(temp, data, size);
 				
 				temp->next = head->next;
 				head->next = temp;	
 			}
-			else if(compare == 0) //token already exists in list
-			{
-				nData(head)->freq++; //increase count of preexisting token
-			}
+
 		}
 	}
 	else
 	{
-		initNameData(head, data); //set new data as first node of list
+		init(head, data, size);
 	}
-	return front; //return head of list
+	return front;
 }
 
-//copies dataSize number of bytes into data of passed node
-//assumes passed node and data aren't null
 void initGeneral(Node* node, void* data, int dataSize)
 {
-	node->data = malloc(dataSize);
-	memcpy(node->data, data, dataSize);
-	node->next = NULL;
+    node->data = malloc(dataSize);
+    memcpy(node->data, data, dataSize);
+    node->next = NULL;
 }
 
-//copies string by value into passed node
-//sets default of count of tokens to 1
-//assumes passed node and data aren't null
-void initNameData(Node* node, char** data)
+void initNameData(Node* node, void* in, int placeholder)
 {
+	NameData* data = (NameData*) in;
 	node->data = malloc(sizeof(NameData));
 	NameData* temp = nData(node);
-	temp->name = strdup(*data);
-	temp->freq = 1.0f; 
+	temp->name = strdup(data->name);
+	temp->freq = data->freq; 
 	node->next = NULL;
 }
 
-//frees data allocated in list
-//assumes head isn't null and dataSize matches size of data in nodes
-//assumes each node of list has same size
-//doesn't free first node, which might not have been malloced
 void deleteList(Node* head, size_t dataSize)
 {
 	Iterator iter = {head}, iter1 = {head};
-	if(dataSize == 3) //list is of NameData nodes
+	if(dataSize == 3)
 	{
 		NameData* temp;
 		while(hasNext(&iter))
 		{
 			temp = nData(next(&iter));
-			free(temp->name); //free stored string
-			free(temp); //free data
+			free(temp->name);
+			free(temp);
 		}
 	}
-	else //list is of general nodes
+	else
 	{
 		while(hasNext(&iter))
 		{
-			free(nextData(&iter)); //free data
+			free(nextData(&iter));
 		}
 	}
-	next(&iter1); //move past first node, which might not have been malloced
+	next(&iter1);
 	while(hasNext(&iter1))
 	{
-		free(next(&iter1)); //free node
+		free(next(&iter1));
 	}
 }
 
-//increase file node's count of total tokens
-void addToken(Node* node, char** data)
+void addToken(Node* node, NameData* data) 
 {
-	nData(node)->freq++; //increase file node's count of total tokens
-	if(node->next == NULL) //no tokens in list, so input is first token
+	nData(node)->freq++;
+	if(node->next == NULL)
 	{
-		node->next = malloc(sizeof(Node)); 
+		node->next = malloc(sizeof(Node));
 		node->next->next = NULL;
 		node->next->data = NULL;
 	}
-	node->next = nodeAddAlpha(node->next, data); //insert token alphabetically
+	node->next = nodeAddSort(node->next, data, 1);
 }
 
-//called by tokenizer, removes invalid characters and sets to lowercase
-//assumes node and name are valid and aren't null and length is length is length of name
 void tokenHelper(Node* node, char* name, int length)
 {
 	char temp[length+1]; //+1 for null terminator
 	int i = 0, b = 0;
-	for(i = 0, b = 0; i<length; i++) //check each token in list to see if valid
+	for(i = 0, b = 0; i<length; i++)
 	{
 		if(isalpha(*(name+i)))
 		{
-			temp[b] = tolower(*(name+i)); //make letter lowercase
+			temp[b] = tolower(*(name+i));
 			b++;
 		}
 		else if(*(name+i) == '-')
@@ -237,174 +282,192 @@ void tokenHelper(Node* node, char* name, int length)
 			b++;
 		}
 	}
-	temp[b] = '\0'; //make string null-terminated
+	temp[b] = '\0';
 	if(b>0) //token contains at least 1 valid character
 	{
-		char* temp2 = temp;
-		addToken(node, &temp2); //add token to list
+		NameData data = {temp, 1};
+		addToken(node, &data);
 	}
 
 }
-//called by tokenizer, sends tokens to be added to list or have incomplete token be stored
-//precondition: there is no incomplete token being currently stored
+
 void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int length, int* isCont)
 {
 	if(token-buffer+length < BUFFSIZE)
 	{
-		tokenHelper(node,token, strlen(token)); //entire token is in buffer, so have be added to list
-		*isCont = 0; //mark that no incomplete is being stored
+		tokenHelper(node,token, strlen(token));
+		*isCont = 0;
 	}
 	else
 	{
-		*temp1 = strdup(token); //store incomplete token
-		*isCont = 1; //mark that incomplete token is being stored
+		*temp1 = strdup(token);
+		*isCont = 1;
 	}
 }
 
-//reads through file and breaks text into tokens to be added to list
-//assumes that all text in file is ascii
-//assumes that file descriptor is valid
+ char* my_strtok(char** currStr)
+{
+	int length = strlen(*currStr);
+	int found = 0;
+	int i = 0;
+	
+	for(i = 0; i<length && !found; i++)
+	{		
+		if((*currStr)[i] != ' ' && (*currStr)[i] != '\n')
+		{
+			found = 1;
+			*(currStr) = *(currStr) + i;
+		}
+	}	
+	if(found != 0)
+	{
+		found = 0;
+		for(i = 0; i<length && !found; i++)
+		{
+			if((*currStr)[i]==' ' || (*currStr)[i]=='\n')
+			{
+				(*currStr)[i]='\0'; 
+				found = 1;		
+			}
+		}	
+		char* temp = *currStr;
+		*currStr = *(currStr)+i;
+		return temp;
+	}
+	return NULL;
+}
 
 void tokenizer(Node* node, int fd)
 {
-	int bytes; //number of bytes read in
-	int length; //length of token string
-	char buffer[BUFFSIZE+1]; //buffer plus a null terminator
-	int inBuffer; //marks whether or not at least one nondelimter was in buffer
+	int bytes;
+	int length;
+	char* buffer = malloc(BUFFSIZE+1);
+	char* head = buffer; 
+	int inBuffer;
 	char* temp1 = NULL, *temp2 = NULL;
-	int isCont = 0; //marks whether or not incomplete token is being stored
-	buffer[BUFFSIZE] = '\0'; //end buffer with terminating null 
-	
-	char* delim = "\n "; //split tokens by newlines and spaces
+	int isCont = 0; //is continued from previous token?
+	buffer[BUFFSIZE] = '\0';
 	char* token;
 	
-	bytes =  read(fd, buffer, BUFFSIZE);
-	token = strtok(buffer, delim);
-	while(bytes>0) //read file while there are still bytes in it
+	bytes =  read(fd, head, BUFFSIZE);
+	
+	token = my_strtok(&buffer); 
+
+	while(bytes>0)
 	{
-		inBuffer = 0; //currently 0 nondelimters in buffer
+		inBuffer = 0;
 		while(token != NULL)
 		{
-			inBuffer = 1; //at least 1 nondelimiter in buffer
+			inBuffer = 1;
 			length = strlen(token);
 			
-			if(isCont == 1) //there is incomplete token being stored
+			if(isCont == 1)
 			{			
-				if(buffer[0]==' ' || buffer[0]=='\n') //stored token is actually complete token
+				if(head[0]==' ' || head[0]=='\n')
 				{
-					tokenHelper(node, temp1, strlen(temp1)); //remove invalid characters and add to list
-					free(temp1); //release stored token
-					tokenHelperTwo(node, token,buffer,&temp1,length,&isCont); //store or add current token
+					tokenHelper(node, temp1, strlen(temp1));
+					free(temp1);
+					tokenHelperTwo(node, token, head, &temp1, length, &isCont);
 				}
-				else //stored token is incomplete
+				else
 				{
-					temp2 = malloc(length + strlen(temp1)+1);  //add current token to stored token
+					temp2 = malloc(length + strlen(temp1)+1);
 					strcpy(temp2, temp1);
 					strcat(temp2, token);
 					free(temp1);
 					temp1 = temp2;
-					if(token-buffer+length < BUFFSIZE) //current token is complete
+					if(token-head+length < BUFFSIZE)
 					{
-						tokenHelper(node, temp1, strlen(temp1)); //process and add token to list
-						free(temp1); //release stored token
-						isCont = 0; //there is no stored token
+						tokenHelper(node, temp1, strlen(temp1));
+						free(temp1);
+						isCont = 0;
 					}
 				}
 			}
-			else //nothing stored
+			else
 			{			
-				tokenHelperTwo(node,token,buffer,&temp1,length,&isCont); //store or add current token			
-			}			
-			token = strtok(NULL, delim);
+				tokenHelperTwo(node,token,head,&temp1,length,&isCont);				
+			}	
+		
+			token = my_strtok(&buffer);
+
 			
 		} //end while token
 		
-		bytes =  read(fd, buffer, BUFFSIZE);
-		buffer[bytes] = '\0'; //null terminate read-in bytes
-		token = strtok(buffer, delim);
-		if(inBuffer == 0 && isCont == 1) //only delimeters in buffer, stored token is complete
+		bytes =  read(fd, head, BUFFSIZE);
+		buffer = head;
+		buffer[bytes] = '\0';
+
+		token = my_strtok(&buffer); 
+
+		if(inBuffer == 0 && isCont == 1)
 		{
-			tokenHelper(node, temp1, strlen(temp1)); //proccess and add stored token to list
-			free(temp1); //release stored token
-			isCont = 0; //there is no stored token
+			tokenHelper(node, temp1, strlen(temp1));
+			free(temp1);
+			isCont = 0;
 			
 		}
 		
 	} //end while bytes
 	
-	if(isCont==1 && temp1!=NULL) //there is stored token at end, is therefore complete token
+	if(isCont==1 && temp1!=NULL)
 	{
-		tokenHelper(node, temp1, strlen(temp1)); //proccess and add stored token to list
-		free(temp1); //release stored token
+		tokenHelper(node, temp1, strlen(temp1));
+		free(temp1);
 	}
+	free(head);
 }
 
-//attempts to open passed filename and has file tokenized if successful
-//if cannot open file, prints error message
-//assumes that it is passed Args struct with nonnull params
 void* fileHandler(void* input)
 {
 	Args args = *(Args*)input;
 	int fd = open(args.pathName, O_RDONLY);
-	
-	if(fd<0) //passed filename was invalid
+
+	if(fd<0)
 	{
-		perror(args.pathName); 
-	}
+		perror(args.pathName);
+	}	
 	else
 	{
-		Node* temp = malloc(sizeof(Node));
-		temp->next = NULL;
-		temp->data = NULL;	
-		
-		
-		pthread_mutex_lock(args.mut); //lock main list while node is added to it
-		
-		Node* temp2 = (Node*)(nodeAdd(args.listHead, temp, sizeof(*temp))->data); //add linked list to list
 
-		pthread_mutex_unlock(args.mut); //release lock when node has been added
+		Node* file = malloc(sizeof(Node));
+		file->next = NULL;
+		file->data = malloc(sizeof(NameData));
+		nData(file)->freq = 0;
+		nData(file)->name = strdup(args.pathName);
 		
-		Node* tokenHead = nodeAdd(temp2, &args.pathName, 3); //add file node to new linked list
-		nData(tokenHead)->freq--; //set file token count to 0
-		tokenizer(tokenHead, fd); //tokenize file
+		tokenizer(file, fd);
 
-
-		int count = (int)nData(tokenHead)->freq;
-		Iterator iter = {tokenHead};
+		pthread_mutex_lock(args.mut);
+		args.listHead = nodeAddSort(args.listHead, file, 0);
+		pthread_mutex_unlock(args.mut);
+		
+		int count = (int)nData(file)->freq;
+		Iterator iter = {file};
 		double* freq;
 		next(&iter);
-		while(hasNext(&iter)) //divide every token count by number of tokens
+		while(hasNext(&iter))
 		{
 			freq = &nData(next(&iter))->freq;
 			*freq = *freq / count;
 		}
-		
-		close(fd);
-		free(temp);
-		return tokenHead;
+
 	}
 	close(fd);
 	return NULL;
 }
 
-int findTokenName(Node* head, char* name)
+double findTokenName(Node* head, char* name)
 {
-	Iterator iter = {head->next};
-	Node* temp;
-	int compare;
-	while(hasNext(&iter))
+	Node* temp = head;
+	while(temp!=NULL)
 	{
-		temp = (next(&iter));
-		compare = strcmp(name, nData(temp)->name);
-		if(compare==0)
+		if(strcmp(name, nData(temp)->name)==0)
 		{
-			return 1;
+			//printf("found: %s", name);
+			return nData(temp)->freq;
 		}
-		else if(compare<0)
-		{
-			return 0;
-		}
-		
+		temp = temp->next;
 	}
 	return 0;
 }
@@ -413,7 +476,7 @@ char* pathGenerator(char* path, char* name)
 {
     int p = strlen(path);
     int n = strlen(name);
-    char* newPath = malloc((p+n+1)*sizeof(char));
+    char* newPath = malloc(p+n+2);
     for(int i = 0; i<p; i++)
     {
         newPath[i] = path[i];
@@ -423,83 +486,293 @@ char* pathGenerator(char* path, char* name)
     {
         newPath[j] = name[j-(p+1)];
     }
+	
     return newPath;
 }
 
 void* directoryHandler(void* in)
 {
+	
+	//printf("in directory handler!\n");
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
     //checks if directory is accessible, if not returns an error
-    DIR *d = opendir(args->pathName);
-    if(!d)
+	DIR *d;
+
+    d = opendir(args->pathName);
+
+    if(d==NULL)
     {
-        printf("There was an error with the directory at: %s", args->pathName);
-        return 0;
+        printf("There was an error with the directory at: %s\n", args->pathName);
+	   //perror(d);
+        return NULL;
     }
+
     //create list of threads for each item unearthed in this directory
-    Node *threads = malloc(sizeof(Node));
-    threads->data = NULL;
-    threads->next = NULL;
+    Node threads = {NULL, NULL};
     //store pointer to the head for later
-    Node *head = threads;
 
     //iterate through every item in the directory. Two cases: file or directory
     struct dirent *dp;
-    while(dp = readdir(d))
+    while((dp = readdir(d)) != NULL)
     {
+		Args *a1 = malloc(sizeof(struct Arguments));
+        a1->listHead = args->listHead;
+        a1->mut = args->mut;
+        a1->pathName = pathGenerator(args->pathName, dp->d_name);
+        pthread_t t1;
+		
         if(dp->d_type==DT_DIR)
         {
             //Create thread with directoryHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-            Args *a1 = malloc(sizeof(Args));
-            a1->listHead = args->listHead;
-            a1->mut = args->mut;
-            a1->pathName = pathGenerator(args->pathName, dp->d_name);
-            pthread_t t1;
-            pthread_create(&t1, NULL, &directoryHandler, a1);
-            nodeAdd(threads, &t1, sizeof(pthread_t));
-            threads->next = malloc(sizeof(Node));
-            threads = threads->next;
+			if(strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") !=0)
+			{
+				pthread_create(&t1, NULL, &directoryHandler, a1);
+				add(threads, t1);
+			}
         }
         else
         {
             //Create thread with fileHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-            Args *a1 = malloc(sizeof(struct Arguments));
-            a1->listHead = args->listHead;
-            a1->mut = args->mut;
-            a1->pathName = pathGenerator(args->pathName, dp->d_name);
-            pthread_t t1;
+
             pthread_create(&t1, NULL, &fileHandler, a1);
-            nodeAdd(threads, &t1, sizeof(pthread_t));
-            threads->next = malloc(sizeof(struct listNode));
-            threads = threads->next;
+			add(threads, t1);
+
         }
+
     }
     //go through list and join threads
-    while(head!=NULL)
+	Iterator iter = {&threads};
+    while(hasNext(&iter))
     {
-        pthread_join((pthread_t)(head->data), NULL);
-        head = head->next;
+        pthread_join(*(pthread_t*)nextData(&iter), NULL);
     }
     closedir(d);
+	deleteList(&threads, 0);
+	
+	return NULL;
+}
+
+int listLength(Node* in)
+{
+    Node* list = (Node*)in->data;
+    int count = 0;
+    while(list!=NULL)
+    {
+        count++;
+        list = list->next;
+    }
+    return count;
+}
+
+double analyzePair(Node* in1, Node* in2)
+{
+	Node* meanConstruct = malloc(sizeof(Node));
+	Node* token1 = in1->next;
+	Node* token2 = in2->next;
+	while(token1!=NULL)
+	{
+		NameData* data1 = (NameData*)token1->data;
+		double freq1 = data1->freq;
+		double freq2 = findTokenName(token2, data1->name);
+		
+		NameData construct = {data1->name, (freq1+freq2)/2};
+		nodeAdd(meanConstruct, &construct, 3);
+		
+		token1 = token1->next;
+	}
+	token1 = in1->next;
+	while(token2!=NULL)
+	{
+		NameData* data2 = (NameData*)token2->data;
+		double freq2 = data2->freq;
+		double freq1 = findTokenName(token1, data2->name);
+		//printf("GENERIC TOKEN: %s\n", data2->name);
+		if(freq1 == 0)
+		{
+			//printf("NON DUPLICATE TOKEN: %s\n", data2->name);
+			NameData construct = {data2->name, (freq2)/2};
+			nodeAdd(meanConstruct, &construct, 3);
+		}
+		token2 = token2->next;
+	}
+	/*Node* meanConstructTestPointer = meanConstruct;
+	while(meanConstructTestPointer!=NULL)
+	{
+		printf("Token name, mean freq: %s %f\n", ((NameData*)meanConstructTestPointer->data)->name, ((NameData*)meanConstructTestPointer->data)->freq);
+		meanConstructTestPointer = meanConstructTestPointer->next;
+	}*/
+
+	double kld1 = 0;
+	double kld2 = 0;
+	token1 = in1->next;
+	while(token1!=NULL)
+	{
+		NameData* data1 = (NameData*)token1->data;
+		double freq1 = data1->freq;
+		double mean1 = findTokenName(meanConstruct, data1->name);
+		double loggy = log10(freq1/mean1);
+		kld1 += (freq1 * loggy);
+		token1 = token1->next;
+	}
+	/*printf("kld1: %f\n", kld1);
+	char* test = malloc(sizeof(char));
+	*test = 'a';
+	printf("frequency of a in meanConstruct: %f\n", findTokenName(meanConstruct, test));*/
+
+
+	
+	token2 = in2->next;
+	while(token2!=NULL)
+	{	
+		NameData* data2 = (NameData*)token2->data;
+		double freq2 = data2->freq;
+		//printf("freq2: %f\n", freq2);
+		double mean2 = findTokenName(meanConstruct, data2->name);
+		//printf("name: %s\n", data2->name);
+		//printf("mean2: %f\n", mean2);
+		double loggy = log10(freq2/mean2);
+		//printf("loggy: %f\n", loggy);
+		kld1 += (freq2 * loggy);
+		token2 = token2->next;
+	}
+	//printf("kld2: %f\n", kld1);
+
+	return (kld1+kld2)/2;
+}
+
+void analyze(Node* in)
+{
+	Node* start = in;
+    Node* outputList = malloc(sizeof(Node));
+    outputList->data = NULL;
+    outputList->next = NULL;
+	while(start!=NULL && start->next!=NULL)
+	{
+		Node* current = start->next;
+		while(current!=NULL)
+		{
+			Node* p1 = (Node*)start->data;
+			Node* p2 = (Node*)current->data;
+			double result = analyzePair(p1, p2);
+            outputStruct* out = malloc(sizeof(outputStruct));
+            out->name1 = ((NameData*)p1->data)->name;
+            out->name2 = ((NameData*)p2->data)->name;
+            out->distance = result;
+            out->count = (((NameData*)p1->data)->freq + ((NameData*)p2->data)->freq);
+            outputList = nodeAddSort(outputList, out, 2);
+
+			current = current->next;
+		}
+		start = start->next;
+	}
+    Node* outputCurrent = outputList;
+    
+    while(outputCurrent!=NULL && outputCurrent->data!=NULL)
+    {
+        double result = ((outputStruct*)(outputCurrent->data))->distance;
+        char* name1 = ((outputStruct*)(outputCurrent->data))->name1;
+        char* name2 = ((outputStruct*)(outputCurrent->data))->name2;
+        if(result<=0.1)
+        {
+            printf(ANSI_COLOR_RED     "%f"     ANSI_COLOR_RESET "", result);
+        }
+        else if(result<=0.15)
+        {
+            printf(ANSI_COLOR_YELLOW    "%f"     ANSI_COLOR_RESET "", result);
+        }
+        else if(result<=0.2)
+        {
+            printf(ANSI_COLOR_GREEN    "%f"     ANSI_COLOR_RESET "", result);
+        }
+        else if(result<=0.25)
+        {
+            printf(ANSI_COLOR_CYAN    "%f"     ANSI_COLOR_RESET "", result);
+        }
+        else if(result<=0.3)
+        {
+            printf(ANSI_COLOR_BLUE    "%f"     ANSI_COLOR_RESET "", result);
+        }
+        else if(result>0.3)
+        {
+            printf(ANSI_COLOR_WHITE   "%f"     ANSI_COLOR_RESET "", result);
+        }
+        printf(" \"%s\" and \"%s\" \n", name1, name2);
+        outputCurrent = outputCurrent->next;
+    }
+}
+
+void printTest(Node* in)
+{
+    Node* current = in;
+    while(current!=NULL && current->data != NULL)
+    {
+        Node* tokens = (Node*)current->data;
+        NameData* info = (NameData*)tokens->data;
+        printf("File name: %s\n", info->name);
+        printf("Word count: %f\n", info->freq);
+		tokens = tokens->next;
+		while(tokens!=NULL)
+		{
+			NameData* info = (NameData*)tokens->data;
+			printf("Token: %s\n", info->name);
+       		printf("Frequency: %f\n", info->freq);
+			tokens = tokens->next;
+		}
+		printf("\n");
+        current = current->next;
+    }
 }
 
 int main(int argc, char *argv[])
 {
     //call a thread with the following arguments for the directory handler funciton:
+	if(argc<2)
+	{
+		printf("No directory passed\n");
+		return EXIT_SUCCESS;
+	}
     Args *a = malloc(sizeof(Args));
     Node *bigList = malloc(sizeof(Node));
+    bigList->data = NULL;
+    bigList->next = NULL;
     pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    a->pathName = argv[1];
+    a->pathName = argv[1];  
     a->listHead = bigList;
     a->mut = &lock;
-
     pthread_t t;
-    pthread_create(&t, NULL, &directoryHandler, a);
 
-    //MATH ANALYSIS
+    pthread_create(&t, NULL, &directoryHandler, a);
+    pthread_join(t, NULL);
+	//printTest(bigList);
+	
+    //Pre-Analysis
+    if(bigList->data == NULL)
+    {
+        printf("No data written\n");
+        return EXIT_SUCCESS;
+    }
+    else if(listLength(bigList)==1)
+    {
+        printf("Warning: only one entry\n");
+		return EXIT_SUCCESS;
+    }
+    else 
+    {
+        analyze(bigList);
+    }
+	
+	
+	Iterator iter = {bigList};
+	while(hasNext(&iter))
+	{
+		Node* temp = (Node*)(next(&iter)->data);
+		deleteList(temp, 3);	
+	}
+	deleteList(bigList, 0);
+	free(bigList);
 }
