@@ -63,7 +63,7 @@ typedef struct Arguments
 {
   char* pathName;
   pthread_mutex_t* mut;
-  Node* listHead;
+  Node** listHead;
 } Args;
 
 //returns the next value in a linked list
@@ -96,10 +96,7 @@ void* nextData(Iterator* iter)
 //iterator must not be null
 int hasNext(Iterator* iter)
 {
-	if(iter->head != NULL)
-		if(iter->head->data !=NULL)
-			return 1;
-	return 0;
+	return (iter->head != NULL);
 }
 
 //precondition: head isn't null and was initialized to {NULL, NULL}
@@ -227,8 +224,10 @@ Node* nodeAddSort(Node* head, void* data, int key)
 	return front; //return head of list
 }
 
+
 //initialize data by copying bytes
 //expects node to not be null
+//expects dataSize to be size of what data points to
 void initGeneral(Node* node, void* data, int dataSize)
 {
     node->data = malloc(dataSize);
@@ -236,6 +235,9 @@ void initGeneral(Node* node, void* data, int dataSize)
     node->next = NULL;
 }
 
+//initialize data of type NameData
+//expects node to not be null
+//placeholder does nothing besides results in same function args as initGeneral for function pointer compatibility
 void initNameData(Node* node, void* in, int placeholder)
 {
 	NameData* data = (NameData*) in;
@@ -311,6 +313,7 @@ void tokenHelper(Node* node, char* name, int length)
 
 }
 
+//frequently occuring
 void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int length, int* isCont)
 {
 	if(token-buffer+length < BUFFSIZE)
@@ -357,7 +360,7 @@ void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int len
 	return NULL;
 }
 
-void tokenizer(Node* node, int fd)
+int tokenizer(Node* node, int fd)
 {
 	int bytes;
 	int length;
@@ -368,9 +371,9 @@ void tokenizer(Node* node, int fd)
 	int isCont = 0; //is continued from previous token?
 	buffer[BUFFSIZE] = '\0';
 	char* token;
-	
+	int returnVal = 0;
 	bytes =  read(fd, head, BUFFSIZE);
-	
+	//printf("|%s|\n", buffer); 
 	token = my_strtok(&buffer); 
 
 	while(bytes>0)
@@ -417,6 +420,8 @@ void tokenizer(Node* node, int fd)
 		bytes =  read(fd, head, BUFFSIZE);
 		buffer = head;
 		buffer[bytes] = '\0';
+		
+		//printf("|%s|\n", buffer); 
 
 		token = my_strtok(&buffer); 
 
@@ -428,6 +433,8 @@ void tokenizer(Node* node, int fd)
 			
 		}
 		
+		returnVal = 1;
+		
 	} //end while bytes
 	
 	if(isCont==1 && temp1!=NULL)
@@ -436,6 +443,7 @@ void tokenizer(Node* node, int fd)
 		free(temp1);
 	}
 	free(head);
+	return returnVal;
 }
 
 void* fileHandler(void* input)
@@ -456,22 +464,31 @@ void* fileHandler(void* input)
 		nData(file)->freq = 0;
 		nData(file)->name = strdup(args.pathName);
 		
-		tokenizer(file, fd);
-
-		pthread_mutex_lock(args.mut);
-		args.listHead = nodeAddSort(args.listHead, file, 0);
-		pthread_mutex_unlock(args.mut);
+		int val = tokenizer(file, fd);
 		
-		int count = (int)nData(file)->freq;
-		Iterator iter = {file};
-		double* freq;
-		next(&iter);
-		while(hasNext(&iter))
+		if(val)
 		{
-			freq = &nData(next(&iter))->freq;
-			*freq = *freq / count;
+			int count = (int)nData(file)->freq;
+			Iterator iter = {file};
+			double* freq;
+			next(&iter);
+			while(hasNext(&iter))
+			{
+				freq = &nData(next(&iter))->freq;
+				*freq = *freq / count; 
+			}
+			
+			pthread_mutex_lock(args.mut);
+			*(args.listHead) = nodeAddSort(*(args.listHead), file, 0);
+			pthread_mutex_unlock(args.mut);
 		}
-
+		else
+		{
+			free(nData(file)->name);
+			free(nData(file));
+		}
+		
+		free(file);
 	}
 	close(fd);
 	return NULL;
@@ -497,22 +514,16 @@ char* pathGenerator(char* path, char* name)
     int p = strlen(path);
     int n = strlen(name);
     char* newPath = malloc(p+n+2);
-    for(int i = 0; i<p; i++)
-    {
-        newPath[i] = path[i];
-    }
-    newPath[p] = '/';
-    for(int j = p+1; j<(n+p+1); j++)
-    {
-        newPath[j] = name[j-(p+1)];
-    }
+	strcpy(newPath, path);
+	strcat(newPath, "/");
+	strcat(newPath, name);
 	
     return newPath;
 }
 
 void* directoryHandler(void* in)
 {
-	
+	int notEmpty = 0;
 	//printf("in directory handler!\n");
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
@@ -524,56 +535,81 @@ void* directoryHandler(void* in)
     if(d==NULL)
     {
         printf("There was an error with the directory at: %s\n", args->pathName);
-	   //perror(d);
         return NULL;
     }
 
     //create list of threads for each item unearthed in this directory
     Node threads = {NULL, NULL};
-    //store pointer to the head for later
+	//store args structs passed to threads to be freed at end
+	Node nodeArgs = {NULL, NULL};
+	//store each args to be passed to nodeArgs
+	Node* temp;
+ 
 
     //iterate through every item in the directory. Two cases: file or directory
     struct dirent *dp;
+	dp = readdir(d);
+	dp = readdir(d);
     while((dp = readdir(d)) != NULL)
     {
-		Args *a1 = malloc(sizeof(struct Arguments));
-        a1->listHead = args->listHead;
-        a1->mut = args->mut;
-        a1->pathName = pathGenerator(args->pathName, dp->d_name);
-        pthread_t t1;
-		
         if(dp->d_type==DT_DIR)
         {
             //Create thread with directoryHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-			if(strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") !=0)
-			{
-				pthread_create(&t1, NULL, &directoryHandler, a1);
+
+				Args a1 = {pathGenerator(args->pathName, dp->d_name), args->mut, args->listHead};
+				/*a1->listHead = args->listHead;
+				a1->mut = args->mut;
+				a1->pathName = pathGenerator(args->pathName, dp->d_name);*/
+				pthread_t t1;
+				notEmpty = 1;
+				temp = nodeAdd(&nodeArgs, &a1, sizeof(Args));
+				pthread_create(&t1, NULL, &directoryHandler, temp->data);
 				add(threads, t1);
-			}
+
         }
         else if(dp->d_type==DT_REG)
         {
             //Create thread with fileHandler function for the directory found.
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
-
-            pthread_create(&t1, NULL, &fileHandler, a1);
+			Args a1 = {pathGenerator(args->pathName, dp->d_name), args->mut, args->listHead};
+			/*Args *a1 = malloc(sizeof(struct Arguments));
+			a1->listHead = args->listHead;
+			a1->mut = args->mut;
+			a1->pathName = pathGenerator(args->pathName, dp->d_name);*/
+			pthread_t t1;
+			notEmpty = 1;
+			temp = nodeAdd(&nodeArgs, &a1, sizeof(Args));
+            pthread_create(&t1, NULL, &fileHandler, temp->data);
 			add(threads, t1);
-
         }
+		else
+		{
+			printf("invalid\n");
+		}
 
     }
     //go through list and join threads
-	Iterator iter = {&threads};
-    while(hasNext(&iter))
-    {
-        pthread_join(*(pthread_t*)nextData(&iter), NULL);
-    }
-	
+	if(notEmpty)
+	{
+		Iterator iter = {&threads};
+		while(hasNext(&iter))
+		{
+			pthread_join(*(pthread_t*)nextData(&iter), NULL);
+		}
+		iter.head = &nodeArgs;
+		while(hasNext(&iter))
+		{
+			Node* temp = next(&iter);
+			free(((Args*)(temp->data))->pathName);
+		}
+	}
+
+    closedir(d);
 	deleteList(&threads, 0);
-	closedir(d);
+	deleteList(&nodeArgs, 0);
 	return NULL;
 }
 
@@ -592,6 +628,8 @@ int listLength(Node* in)
 double analyzePair(Node* in1, Node* in2)
 {
 	Node* meanConstruct = malloc(sizeof(Node));
+	meanConstruct->data = NULL;
+	meanConstruct->next = NULL;
 	Node* token1 = in1->next;
 	Node* token2 = in2->next;
 	while(token1!=NULL)
@@ -661,7 +699,9 @@ double analyzePair(Node* in1, Node* in2)
 		token2 = token2->next;
 	}
 	//printf("kld2: %f\n", kld1);
-
+	
+	deleteList(meanConstruct, 3);
+	free(meanConstruct);
 	return (kld1+kld2)/2;
 }
 
@@ -679,12 +719,8 @@ void analyze(Node* in)
 			Node* p1 = (Node*)start->data;
 			Node* p2 = (Node*)current->data;
 			double result = analyzePair(p1, p2);
-            outputStruct* out = malloc(sizeof(outputStruct));
-            out->name1 = ((NameData*)p1->data)->name;
-            out->name2 = ((NameData*)p2->data)->name;
-            out->distance = result;
-            out->count = (((NameData*)p1->data)->freq + ((NameData*)p2->data)->freq);
-            outputList = nodeAddSort(outputList, out, 2);
+            outputStruct out = {((NameData*)p1->data)->name, ((NameData*)p2->data)->name, result, (((NameData*)p1->data)->freq + ((NameData*)p2->data)->freq)};
+            outputList = nodeAddSort(outputList, &out, 2);
 
 			current = current->next;
 		}
@@ -724,6 +760,8 @@ void analyze(Node* in)
         printf(" \"%s\" and \"%s\" \n", name1, name2);
         outputCurrent = outputCurrent->next;
     }
+	deleteList(outputList,0);
+	free(outputList);
 }
 
 void printTest(Node* in)
@@ -762,24 +800,22 @@ int main(int argc, char *argv[])
     bigList->next = NULL;
     pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
     a->pathName = argv[1];  
-    a->listHead = bigList;
+    a->listHead = &bigList;
     a->mut = &lock;
     pthread_t t;
 
     pthread_create(&t, NULL, &directoryHandler, a);
     pthread_join(t, NULL);
-	printTest(bigList);
+	//printTest(bigList);
 	
     //Pre-Analysis
     if(bigList->data == NULL)
     {
         printf("No data written\n");
-        return EXIT_SUCCESS;
     }
     else if(listLength(bigList)==1)
     {
-        printf("Warning: not enough valid files\n");
-		return EXIT_SUCCESS;
+        printf("Warning: not enough valid entries\n");
     }
     else 
     {
@@ -795,4 +831,5 @@ int main(int argc, char *argv[])
 	}
 	deleteList(bigList, 0);
 	free(bigList);
+	free(a);
 }
