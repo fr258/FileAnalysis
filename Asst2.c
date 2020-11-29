@@ -374,8 +374,7 @@ void tokenHelperTwo(Node* node, char* token, char* buffer, char** incompleteToke
 
 //assumes not null node and valid file descriptor
 //reads file into buffer and splits read file into tokens, which are added to passed linked list
-//if file is empty, returns 0
-int tokenizer(Node* node, int fd)
+void tokenizer(Node* node, int fd)
 {
 	int bytes;
 	int length;
@@ -386,7 +385,6 @@ int tokenizer(Node* node, int fd)
 	int isCont = 0; //is continued from previous token?
 	buffer[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
 	char* token;
-	int returnVal = 0; //if 0 at end, file is empty
 	bytes =  read(fd, head, BUFFSIZE);
 	token = my_strtok(&buffer); //return first token of buffer
 
@@ -446,8 +444,6 @@ int tokenizer(Node* node, int fd)
 			
 		}
 		
-		returnVal = 1; //mark that file isn't empty
-		
 	} //end while bytes
 	
 	if(isCont==1 && temp1!=NULL) //stored token but reached end of file
@@ -456,7 +452,6 @@ int tokenizer(Node* node, int fd)
 		free(temp1); //release stored token
 	}
 	free(head);
-	return returnVal;
 }
 
 //reads file, has it tokenized, and has it added to list by number of tokens
@@ -478,29 +473,22 @@ void* fileHandler(void* input)
 		nData(file)->freq = 0;
 		nData(file)->name = strdup(args.pathName);
 		
-		int val = tokenizer(file, fd); //tokenize file and add token nodes after file node
+		tokenizer(file, fd); //tokenize file and add token nodes after file node
 		
-		if(val) //file isn't empty
+		int count = (int)nData(file)->freq;
+		Iterator iter = {file};
+		double* freq;
+		next(&iter);
+		while(hasNext(&iter)) //divide token counts by total number of tokens
 		{
-			int count = (int)nData(file)->freq;
-			Iterator iter = {file};
-			double* freq;
-			next(&iter);
-			while(hasNext(&iter)) //divide token counts by total number of tokens
-			{
-				freq = &nData(next(&iter))->freq;
-				*freq = *freq / count; 
-			}
-			
-			pthread_mutex_lock(args.mut);
-			*(args.listHead) = nodeAddSort(*(args.listHead), file, 0); //add node by token count
-			pthread_mutex_unlock(args.mut);
+			freq = &nData(next(&iter))->freq;
+			*freq = *freq / count; 
 		}
-		else //file is empty, free resources
-		{
-			free(nData(file)->name);
-			free(nData(file));
-		}
+		
+		pthread_mutex_lock(args.mut);
+		*(args.listHead) = nodeAddSort(*(args.listHead), file, 0); //add node by token count
+		pthread_mutex_unlock(args.mut);
+
 		
 		free(file);
 	}
@@ -522,11 +510,12 @@ double findTokenName(Node* head, char* name)
 	return 0;
 }
 
+//concatenates name onto path and assumes neither are null
 char* pathGenerator(char* path, char* name)
 {
     int p = strlen(path);
     int n = strlen(name);
-    char* newPath = malloc(p+n+2);
+    char* newPath = malloc(p+n+2); //length of path and name plus null and slash
 	strcpy(newPath, path);
 	strcat(newPath, "/");
 	strcat(newPath, name);
@@ -619,14 +608,14 @@ void* directoryHandler(void* in)
 	return NULL;
 }
 
+//returns number of files in main list
 int listLength(Node* in)
 {
-    Node* list = (Node*)in->data;
     int count = 0;
-    while(list!=NULL)
+    while(in!=NULL)
     {
         count++;
-        list = list->next;
+        in = in->next;
     }
     return count;
 }
@@ -704,15 +693,18 @@ double analyzePair(Node* in1, Node* in2)
 		kld1 += (freq2 * loggy);
 		token2 = token2->next;
 	}
-	//printf("kld2: %f\n", kld1);
-	
-	deleteList(meanConstruct, 3);
+
+	if(meanConstruct->data != NULL)
+	{
+		deleteList(meanConstruct, 3);
+	}	
 	free(meanConstruct);
 	return (kld1+kld2)/2;
 }
 
 void analyze(Node* in)
 {
+
 	Node* start = in;
     Node* outputList = malloc(sizeof(Node));
     outputList->data = NULL;
