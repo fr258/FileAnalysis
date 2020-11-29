@@ -1,0 +1,7 @@
+Invalid directory: if passed a string that isn’t a directory name, the program will print an error message and exit.
+No directory passed: if not passed a directory name, the program will print an error message and exit.
+Only empty files: if only files passed have no text in them, the program will print an error message and exit.
+Some empty, some nonempty files: if some files are empty and some files are nonempty, the program will analyze only the nonempty files and ignore the rest.
+Files and directories: if passed valid files and directories, it will create a thread for every directory and file, tokenize files, join threads, and analyze token lists and output results between pairs of files in order of increasing combined token count.
+Identical files: if passed at least two files with the same text body (not case sensitive and excluding non-alphabet characters besides hyphens), the outputted distance between the files will be 0.
+Files with the same token count: if multiple pairs of files have the same combined token count, the order in which they are output will not matter.
