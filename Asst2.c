@@ -16,7 +16,7 @@
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
-#define ANSI_COLOR_BLUE    "\x1b[34;1m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_WHITE   "\x1b[37m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
@@ -381,12 +381,12 @@ void tokenizer(Node* node, int fd)
 {
 	int bytes;
 	int length;
-	char head[BUFFSIZE+1];
-	char* buffer = head; 
+	char* buffer = malloc(BUFFSIZE+1);
+	char* head = buffer; 
 	int inBuffer; //used to mark if at least one nonterminator was found
 	char* temp1 = NULL, *temp2 = NULL; //used to store incomplete tokens
 	int isCont = 0; //is continued from previous token?
-	head[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
+	buffer[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
 	char* token;
 	bytes =  read(fd, head, BUFFSIZE);
 	token = my_strtok(&buffer); //return first token of buffer
@@ -454,7 +454,7 @@ void tokenizer(Node* node, int fd)
 		tokenHelper(node, temp1, strlen(temp1)); //add token to list
 		free(temp1); //release stored token
 	}
-	//free(head);
+	free(head);
 }
 
 //reads file, has it tokenized, and has it added to list by number of tokens
@@ -499,6 +499,8 @@ void* fileHandler(void* input)
 	return NULL;
 }
 
+//look for token with given name in list and if found, return frequency
+//node must not be null and must have data of type NameData
 double findTokenName(Node* head, char* name)
 {
 	Node* temp = head;
@@ -529,7 +531,6 @@ char* pathGenerator(char* path, char* name)
 void* directoryHandler(void* in)
 {
 	int notEmpty = 0;
-	//printf("in directory handler!\n");
     //cast input to struct Arguments, can extract data such as filepath, mutex, main linkedlist
     Args *args = (Args*)in;
     //checks if directory is accessible, if not returns an error
@@ -623,6 +624,7 @@ int listLength(Node* in)
     return count;
 }
 
+//analyze two linked lists and compute distance between
 double analyzePair(Node* in1, Node* in2)
 {
 	Node* meanConstruct = malloc(sizeof(Node));
@@ -647,21 +649,13 @@ double analyzePair(Node* in1, Node* in2)
 		NameData* data2 = (NameData*)token2->data;
 		double freq2 = data2->freq;
 		double freq1 = findTokenName(token1, data2->name);
-		//printf("GENERIC TOKEN: %s\n", data2->name);
 		if(freq1 == 0)
 		{
-			//printf("NON DUPLICATE TOKEN: %s\n", data2->name);
 			NameData construct = {data2->name, (freq2)/2};
 			nodeAdd(meanConstruct, &construct, 3);
 		}
 		token2 = token2->next;
 	}
-	/*Node* meanConstructTestPointer = meanConstruct;
-	while(meanConstructTestPointer!=NULL)
-	{
-		printf("Token name, mean freq: %s %f\n", ((NameData*)meanConstructTestPointer->data)->name, ((NameData*)meanConstructTestPointer->data)->freq);
-		meanConstructTestPointer = meanConstructTestPointer->next;
-	}*/
 
 	double kld1 = 0;
 	double kld2 = 0;
@@ -675,11 +669,6 @@ double analyzePair(Node* in1, Node* in2)
 		kld1 += (freq1 * loggy);
 		token1 = token1->next;
 	}
-	/*printf("kld1: %f\n", kld1);
-	char* test = malloc(sizeof(char));
-	*test = 'a';
-	printf("frequency of a in meanConstruct: %f\n", findTokenName(meanConstruct, test));*/
-
 
 	
 	token2 = in2->next;
@@ -705,6 +694,8 @@ double analyzePair(Node* in1, Node* in2)
 	return (kld1+kld2)/2;
 }
 
+//analyze token lists and print results
+//passed node must not be null
 void analyze(Node* in)
 {
 
@@ -765,6 +756,8 @@ void analyze(Node* in)
 	free(outputList);
 }
 
+//iterate through linked list of linked lists and print values
+//input node must not be null
 void printTest(Node* in)
 {
     Node* current = in;
@@ -795,8 +788,8 @@ int main(int argc, char *argv[])
 		printf("No directory passed\n");
 		return EXIT_SUCCESS;
 	}
-    Args *a = malloc(sizeof(Args));
-    Node *bigList = malloc(sizeof(Node));
+    Args *a = malloc(sizeof(Args)); //args passed to first thread
+    Node *bigList = malloc(sizeof(Node)); //node of main list
     bigList->data = NULL;
     bigList->next = NULL;
     pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -807,7 +800,6 @@ int main(int argc, char *argv[])
 
     pthread_create(&t, NULL, &directoryHandler, a);
     pthread_join(t, NULL);
-	//printTest(bigList);
 	
     //Pre-Analysis
     if(bigList->data == NULL)
