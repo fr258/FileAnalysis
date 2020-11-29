@@ -237,7 +237,7 @@ void initGeneral(Node* node, void* data, int dataSize)
 
 //initialize data of type NameData
 //expects node to not be null
-//placeholder does nothing besides results in same function args as initGeneral for function pointer compatibility
+//placeholder results in same function args as initGeneral for function pointer compatibility
 void initNameData(Node* node, void* in, int placeholder)
 {
 	NameData* data = (NameData*) in;
@@ -248,10 +248,13 @@ void initNameData(Node* node, void* in, int placeholder)
 	node->next = NULL;
 }
 
+//deletes data and nodes of passed list
+//assumes that head is not null, and that dataSize is size of data in node if not NameData nod
+//if NameData node, dataSize is 3
 void deleteList(Node* head, size_t dataSize)
 {
 	Iterator iter = {head}, iter1 = {head};
-	if(dataSize == 3)
+	if(dataSize == 3) //NameData-- must delete malloced string as well as data
 	{
 		NameData* temp;
 		while(hasNext(&iter))
@@ -261,7 +264,7 @@ void deleteList(Node* head, size_t dataSize)
 			free(temp);
 		}
 	}
-	else
+	else //not NameData, will only free data bytes
 	{
 		while(hasNext(&iter))
 		{
@@ -269,38 +272,43 @@ void deleteList(Node* head, size_t dataSize)
 		}
 	}
 	next(&iter1);
-	while(hasNext(&iter1))
+	while(hasNext(&iter1)) //free nodes
 	{
 		free(next(&iter1));
 	}
 }
 
+//adds token to linked lsit by name alphabetically
+//assumes that node is not null and contains file
 void addToken(Node* node, NameData* data) 
 {
-	nData(node)->freq++;
+	nData(node)->freq++; //increase count of token
 	if(node->next == NULL)
 	{
 		node->next = malloc(sizeof(Node));
 		node->next->next = NULL;
 		node->next->data = NULL;
 	}
-	node->next = nodeAddSort(node->next, data, 1);
+	node->next = nodeAddSort(node->next, data, 1); //adss to list alphabetically
 }
 
+//called by tokenizer
+//assumes node is not null
+//removes non-alphabet characters, excluding hyphens, and makes alphabet characters lowercase
 void tokenHelper(Node* node, char* name, int length)
 {
 	char temp[length+1]; //+1 for null terminator
 	int i = 0, b = 0;
 	for(i = 0, b = 0; i<length; i++)
 	{
-		if(isalpha(*(name+i)))
+		if(isalpha(*(name+i))) //is letter
 		{
-			temp[b] = tolower(*(name+i));
+			temp[b] = tolower(*(name+i)); //make letter lowercase and add to token
 			b++;
 		}
-		else if(*(name+i) == '-')
+		else if(*(name+i) == '-') //is letter
 		{
-			temp[b] = *(name+i);
+			temp[b] = *(name+i); //add character to token
 			b++;
 		}
 	}
@@ -308,73 +316,79 @@ void tokenHelper(Node* node, char* name, int length)
 	if(b>0) //token contains at least 1 valid character
 	{
 		NameData data = {temp, 1};
-		addToken(node, &data);
+		addToken(node, &data); //add token to linked list 
 	}
 
 }
 
-//frequently occuring
-void tokenHelperTwo(Node* node, char* token, char* buffer, char** temp1, int length, int* isCont)
+//called by tokenizer
+//assumes that none of passed args are null
+void tokenHelperTwo(Node* node, char* token, char* buffer, char** incompleteToken, int length, int* isCont)
 {
-	if(token-buffer+length < BUFFSIZE)
+	if(token-buffer+length < BUFFSIZE) //token is fully contained in buffer
 	{
 		tokenHelper(node,token, strlen(token));
-		*isCont = 0;
+		*isCont = 0; //mark that token isn't stored
 	}
-	else
+	else //token is not fully contained in buffer
 	{
-		*temp1 = strdup(token);
-		*isCont = 1;
+		*incompleteToken = strdup(token); //store incomplete token 
+		*isCont = 1; //mark that token is stored
 	}
 }
 
+//called by tokenizer
+//seaches for delimters and makes them null characters
+//returns pointer to first not-null character
  char* my_strtok(char** currStr)
 {
 	int length = strlen(*currStr);
 	int found = 0;
 	int i = 0;
 	
-	for(i = 0; i<length && !found; i++)
+	for(i = 0; i<length && !found; i++) //increments first character until nonterminator is found
 	{		
 		if((*currStr)[i] != ' ' && (*currStr)[i] != '\n')
 		{
-			found = 1;
-			*(currStr) = *(currStr) + i;
+			found = 1; //mark nonterminator found
+			*(currStr) = *(currStr) + i; //set beginning of string to first nonterminator character
 		}
 	}	
-	if(found != 0)
+	if(found != 0) //at least one nonterminator character was found
 	{
 		found = 0;
 		for(i = 0; i<length && !found; i++)
 		{
-			if((*currStr)[i]==' ' || (*currStr)[i]=='\n')
+			if((*currStr)[i]==' ' || (*currStr)[i]=='\n') //if terminator found
 			{
-				(*currStr)[i]='\0'; 
-				found = 1;		
+				(*currStr)[i]='\0'; //set terminating character to null
+				found = 1;//mark terminator found-- cease looping
 			}
 		}	
 		char* temp = *currStr;
 		*currStr = *(currStr)+i;
-		return temp;
+		return temp; //return pointer to first not-null character
 	}
-	return NULL;
+	return NULL; //no nonterminator characters found
 }
 
+//assumes not null node and valid file descriptor
+//reads file into buffer and splits read file into tokens, which are added to passed linked list
+//if file is empty, returns 0
 int tokenizer(Node* node, int fd)
 {
 	int bytes;
 	int length;
 	char* buffer = malloc(BUFFSIZE+1);
 	char* head = buffer; 
-	int inBuffer;
-	char* temp1 = NULL, *temp2 = NULL;
+	int inBuffer; //used to mark if at least one nonterminator was found
+	char* temp1 = NULL, *temp2 = NULL; //used to store incomplete tokens
 	int isCont = 0; //is continued from previous token?
-	buffer[BUFFSIZE] = '\0';
+	buffer[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
 	char* token;
-	int returnVal = 0;
+	int returnVal = 0; //if 0 at end, file is empty
 	bytes =  read(fd, head, BUFFSIZE);
-	//printf("|%s|\n", buffer); 
-	token = my_strtok(&buffer); 
+	token = my_strtok(&buffer); //return first token of buffer
 
 	while(bytes>0)
 	{
@@ -384,105 +398,105 @@ int tokenizer(Node* node, int fd)
 			inBuffer = 1;
 			length = strlen(token);
 			
-			if(isCont == 1)
+			if(isCont == 1) //incomplete token being stored
 			{			
-				if(head[0]==' ' || head[0]=='\n')
+				if(head[0]==' ' || head[0]=='\n') //token being stored can be added to list
 				{
-					tokenHelper(node, temp1, strlen(temp1));
-					free(temp1);
-					tokenHelperTwo(node, token, head, &temp1, length, &isCont);
+					tokenHelper(node, temp1, strlen(temp1)); //add to list
+					free(temp1); //release stored token
+					tokenHelperTwo(node, token, head, &temp1, length, &isCont); //process current buffer
 				}
-				else
+				else //token being stored cannot be added to list yet
 				{
+					//add current token to stored incomplete token
 					temp2 = malloc(length + strlen(temp1)+1);
 					strcpy(temp2, temp1);
 					strcat(temp2, token);
 					free(temp1);
 					temp1 = temp2;
-					if(token-head+length < BUFFSIZE)
+					if(token-head+length < BUFFSIZE) //if stored token is complete
 					{
-						tokenHelper(node, temp1, strlen(temp1));
-						free(temp1);
-						isCont = 0;
+						tokenHelper(node, temp1, strlen(temp1)); //add to list
+						free(temp1); //free stored token
+						isCont = 0; //mark that token isn't being stored
 					}
 				}
 			}
-			else
+			else //incomplete token not being stored
 			{			
 				tokenHelperTwo(node,token,head,&temp1,length,&isCont);				
 			}	
 		
-			token = my_strtok(&buffer);
+			token = my_strtok(&buffer); //get new token from buffer
 
 			
 		} //end while token
 		
-		bytes =  read(fd, head, BUFFSIZE);
-		buffer = head;
-		buffer[bytes] = '\0';
-		
-		//printf("|%s|\n", buffer); 
+		bytes =  read(fd, head, BUFFSIZE); //read new bytes into buffer
+		buffer = head; //set pointer to beginning of buffer
+		buffer[bytes] = '\0'; //terminate buffer with null character
 
-		token = my_strtok(&buffer); 
+		token = my_strtok(&buffer); //get new token from buffer
 
-		if(inBuffer == 0 && isCont == 1)
+		if(inBuffer == 0 && isCont == 1) //stored token, buffer has no valid characters
 		{
-			tokenHelper(node, temp1, strlen(temp1));
-			free(temp1);
-			isCont = 0;
+			tokenHelper(node, temp1, strlen(temp1)); //add stored token to list
+			free(temp1); //free stored token
+			isCont = 0; //mark that no token is being stored
 			
 		}
 		
-		returnVal = 1;
+		returnVal = 1; //mark that file isn't empty
 		
 	} //end while bytes
 	
-	if(isCont==1 && temp1!=NULL)
+	if(isCont==1 && temp1!=NULL) //stored token but reached end of file
 	{
-		tokenHelper(node, temp1, strlen(temp1));
-		free(temp1);
+		tokenHelper(node, temp1, strlen(temp1)); //add token to list
+		free(temp1); //release stored token
 	}
 	free(head);
 	return returnVal;
 }
 
+//reads file, has it tokenized, and has it added to list by number of tokens
 void* fileHandler(void* input)
 {
 	Args args = *(Args*)input;
 	int fd = open(args.pathName, O_RDONLY);
 
-	if(fd<0)
+	if(fd<0) //invalid pathName passed
 	{
 		perror(args.pathName);
 	}	
-	else
+	else //valid pathName passed
 	{
 
-		Node* file = malloc(sizeof(Node));
+		Node* file = malloc(sizeof(Node)); //create new head node for file
 		file->next = NULL;
 		file->data = malloc(sizeof(NameData));
 		nData(file)->freq = 0;
 		nData(file)->name = strdup(args.pathName);
 		
-		int val = tokenizer(file, fd);
+		int val = tokenizer(file, fd); //tokenize file and add token nodes after file node
 		
-		if(val)
+		if(val) //file isn't empty
 		{
 			int count = (int)nData(file)->freq;
 			Iterator iter = {file};
 			double* freq;
 			next(&iter);
-			while(hasNext(&iter))
+			while(hasNext(&iter)) //divide token counts by total number of tokens
 			{
 				freq = &nData(next(&iter))->freq;
 				*freq = *freq / count; 
 			}
 			
 			pthread_mutex_lock(args.mut);
-			*(args.listHead) = nodeAddSort(*(args.listHead), file, 0);
+			*(args.listHead) = nodeAddSort(*(args.listHead), file, 0); //add node by token count
 			pthread_mutex_unlock(args.mut);
 		}
-		else
+		else //file is empty, free resources
 		{
 			free(nData(file)->name);
 			free(nData(file));
@@ -501,7 +515,6 @@ double findTokenName(Node* head, char* name)
 	{
 		if(strcmp(name, nData(temp)->name)==0)
 		{
-			//printf("found: %s", name);
 			return nData(temp)->freq;
 		}
 		temp = temp->next;
@@ -559,9 +572,6 @@ void* directoryHandler(void* in)
             //Adds this thread to the linkedlist of threads associated with this particular function call
 
 				Args a1 = {pathGenerator(args->pathName, dp->d_name), args->mut, args->listHead};
-				/*a1->listHead = args->listHead;
-				a1->mut = args->mut;
-				a1->pathName = pathGenerator(args->pathName, dp->d_name);*/
 				pthread_t t1;
 				notEmpty = 1;
 				temp = nodeAdd(&nodeArgs, &a1, sizeof(Args));
@@ -575,10 +585,6 @@ void* directoryHandler(void* in)
             //Pass along the mutex, the main linked list, and the updated path, in a new struct
             //Adds this thread to the linkedlist of threads associated with this particular function call
 			Args a1 = {pathGenerator(args->pathName, dp->d_name), args->mut, args->listHead};
-			/*Args *a1 = malloc(sizeof(struct Arguments));
-			a1->listHead = args->listHead;
-			a1->mut = args->mut;
-			a1->pathName = pathGenerator(args->pathName, dp->d_name);*/
 			pthread_t t1;
 			notEmpty = 1;
 			temp = nodeAdd(&nodeArgs, &a1, sizeof(Args));
@@ -600,7 +606,7 @@ void* directoryHandler(void* in)
 			pthread_join(*(pthread_t*)nextData(&iter), NULL);
 		}
 		iter.head = &nodeArgs;
-		while(hasNext(&iter))
+		while(hasNext(&iter)) //release malloced args
 		{
 			Node* temp = next(&iter);
 			free(((Args*)(temp->data))->pathName);
