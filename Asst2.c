@@ -343,6 +343,8 @@ void tokenHelperTwo(Node* node, char* token, char* buffer, char** incompleteToke
  char* my_strtok(char** currStr)
 {
 	int length = strlen(*currStr);
+	if(length>256)
+		printf("length is %d\n", length);
 	int found = 0;
 	int i = 0;
 	
@@ -354,6 +356,7 @@ void tokenHelperTwo(Node* node, char* token, char* buffer, char** incompleteToke
 			*(currStr) = *(currStr) + i; //set beginning of string to first nonterminator character
 		}
 	}	
+	length = length - i + 1;
 	if(found != 0) //at least one nonterminator character was found
 	{
 		found = 0;
@@ -378,12 +381,12 @@ void tokenizer(Node* node, int fd)
 {
 	int bytes;
 	int length;
-	char* buffer = malloc(BUFFSIZE+1);
-	char* head = buffer; 
+	char head[BUFFSIZE+1];
+	char* buffer = head; 
 	int inBuffer; //used to mark if at least one nonterminator was found
 	char* temp1 = NULL, *temp2 = NULL; //used to store incomplete tokens
 	int isCont = 0; //is continued from previous token?
-	buffer[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
+	head[BUFFSIZE] = '\0'; //buffer null terminated so can be read as string
 	char* token;
 	bytes =  read(fd, head, BUFFSIZE);
 	token = my_strtok(&buffer); //return first token of buffer
@@ -451,7 +454,7 @@ void tokenizer(Node* node, int fd)
 		tokenHelper(node, temp1, strlen(temp1)); //add token to list
 		free(temp1); //release stored token
 	}
-	free(head);
+	//free(head);
 }
 
 //reads file, has it tokenized, and has it added to list by number of tokens
